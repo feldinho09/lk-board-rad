@@ -41,7 +41,7 @@ lk-board.example.ch {
 
 ## Alltag in Kürze
 
-1. **Vorbereitung:** Unter *Rennen* das Rennen anlegen (Eintages- oder Etappenrennen), unter *Import* die Startliste laden (CSV/XLSX/einfügen) und mehrdeutige Zeilen entscheiden. Unter *Fahrer* Aussprache, drei Schlüsselfakten und Notizen pflegen.
+1. **Vorbereitung:** Unter *Rennen* das Rennen anlegen (Eintages- oder Etappenrennen), unter *Import* die Startliste laden (CSV, XLSX, PDF, Link oder einfügen; PDF-Ergebnis vor dem Abgleich prüfen) und mehrdeutige Zeilen entscheiden. Unter *Fahrer* Aussprache, drei Schlüsselfakten und Notizen pflegen.
 2. **Vor dem Start:** *Bereitschaft* öffnen, alle Punkte prüfen und „Dauerhaften Speicher anfordern“ wählen. Unter *Sicherung* ein Archiv herunterladen und extern ablegen. Die App einmal ohne Internet öffnen.
 3. **Live:** Auf „● Live“ umschalten. `Strg K` öffnet die Suche (Startnummer oder Name), `↑ ↓` blättert durch die Startliste, `P` heftet an, `F` markiert als Favorit, `N` öffnet das Ereignisfeld, `?` zeigt die Hilfe.
 4. **Danach:** Archiv sichern und das Rennen unter *Rennen* auf „archiviert“ setzen.
@@ -63,4 +63,4 @@ docs         Architektur, Abnahmebericht
 
 ## Lizenzen der Abhängigkeiten
 
-react, react-dom, papaparse, read-excel-file, fflate (MIT); dexie, dexie-react-hooks (Apache-2.0). Entwicklung: vite, vitest, typescript, fake-indexeddb, @vitejs/plugin-react.
+react, react-dom, papaparse, read-excel-file, fflate (MIT); dexie, dexie-react-hooks, pdfjs-dist (Apache-2.0). Entwicklung: vite, vitest, typescript, fake-indexeddb, @vitejs/plugin-react.

@@ -77,6 +77,37 @@ try {
   });
   check(5, 'Startnummer 007 bleibt 007; zurückgestellte Zeile nicht still übernommen', JSON.stringify(bibs) === '["007","13"]', JSON.stringify(bibs));
 
+  // Link-Import (Nr. 5/7): simulierte Veranstalter-Seite mit CORS-Freigabe, liefert ein PDF
+  await page.route('https://veranstalter.example/**', (route) => route.fulfill({
+    status: 200, headers: { 'content-type': 'application/pdf', 'access-control-allow-origin': '*' },
+    body: readFileSync('src/import/fixtures/startliste-tabelle.pdf'),
+  }));
+  await page.goto(URL + '#/rennen');
+  await page.getByLabel('Name').first().fill('Link-Rennen');
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+  await page.goto(URL + '#/import');
+  await page.locator('fieldset select').first().selectOption({ label: 'Link-Rennen' });
+  await page.getByLabel('Link zur Startliste').fill('https://www.procyclingstats.com/race/x/2026/startlist');
+  await page.getByRole('button', { name: 'Link laden' }).click();
+  const pcsMsg = await page.locator('.banner.err').textContent();
+  check('7a', 'ProCyclingStats-Link wird ohne autorisierten Zugang nicht abgerufen', /autorisierten PCS-Zugang/.test(pcsMsg), pcsMsg.slice(0, 80));
+  await page.getByLabel('Link zur Startliste').fill('https://veranstalter.example/startliste.pdf');
+  await page.getByRole('button', { name: 'Link laden' }).click();
+  await page.waitForSelector('text=Aus dem PDF erkannte Tabelle');
+  await page.getByLabel('Erkennung').selectOption('tabelle');
+  const abgleichDisabled = await page.getByRole('button', { name: /Abgleichen/ }).isDisabled();
+  await page.getByText('Ich habe die erkannte Tabelle geprüft').click();
+  await page.getByRole('button', { name: /Abgleichen/ }).click();
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr td:nth-child(5) .badge').length === 3);
+  await page.getByRole('button', { name: /Bestätigte Zeilen übernehmen/ }).click();
+  await page.waitForSelector('text=Import gespeichert');
+  const linkParts = await page.evaluate(async () => {
+    const { db } = window.__lk;
+    const ed = (await db.editions.toArray()).find((e) => e.name === 'Link-Rennen');
+    return (await db.participations.where('editionId').equals(ed.id).toArray()).map((p) => p.bib).sort();
+  });
+  check('PDF/Link', 'PDF über Link geladen; Abgleich erst nach Prüf-Bestätigung', abgleichDisabled && linkParts.length >= 2, `Abgleich vorher gesperrt: ${abgleichDisabled}; Nummern ${JSON.stringify(linkParts)}`);
+
   // Live-Ansicht Demo: Etappe 4 → Gesamtwertung zeigt Stand nach Etappe 3
   const demoId = await page.evaluate(async () => (await window.__lk.db.editions.toArray()).find((e) => e.dataOrigin === 'demo').id);
   await page.goto(URL + '#live');
@@ -159,7 +190,7 @@ try {
   await page.getByRole('button', { name: 'Anlegen' }).click();
   await page.goto(URL + '#import');
   await page.locator('fieldset select').first().selectOption({ label: 'Offline-Rennen' });
-  await page.getByPlaceholder(/Aus Excel/).fill('Nr;Name;Team\n1;KOWALSKA Anna;Team Offline\n');
+  await page.getByPlaceholder(/Aus Excel/).fill('Nr;Name;Team\n1;SZYMAŃSKA Ewa;Team Offline\n');
   await page.getByRole('button', { name: 'Eingefügte Tabelle laden' }).click();
   await page.getByRole('button', { name: /Abgleichen/ }).click();
   await page.getByRole('button', { name: /Bestätigte Zeilen übernehmen/ }).click();
@@ -183,7 +214,32 @@ try {
     const ev = await db.events.where('editionId').equals(ed.id).toArray();
     return { name: r.displayName, first: r.firstName, last: r.lastName, ev: ev.map((e) => e.text) };
   });
-  check(2, 'Offline angelegtes Rennen, Import und Notiz nach Neustart vorhanden', persisted.last === 'Kowalska' && persisted.ev.includes('Offline-Notiz'), JSON.stringify(persisted));
+  check(2, 'Offline angelegtes Rennen, Import und Notiz nach Neustart vorhanden', persisted.last === 'Szymańska' && persisted.ev.includes('Offline-Notiz'), JSON.stringify(persisted));
+
+  // PDF-Datei OFFLINE importieren (Teamblöcke nebeneinander, zwei Seiten)
+  await page.goto(URL + '#/rennen');
+  await page.getByLabel('Name').first().fill('PDF-Rennen');
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+  await page.goto(URL + '#/import');
+  await page.locator('fieldset select').first().selectOption({ label: 'PDF-Rennen' });
+  await page.locator('input[type=file]').setInputFiles('src/import/fixtures/startliste-teambloecke.pdf');
+  await page.waitForSelector('text=Aus dem PDF erkannte Tabelle', { timeout: 15000 });
+  await page.screenshot({ path: `${screens}/pdf-pruefung.png`, fullPage: true });
+  // Korrektur in der Zwischenstufe: Team von Nr. 1 umbenennen
+  const firstTeam = page.getByLabel('Zeile 1 Spalte 3');
+  await firstTeam.fill('ALPENFIRN RACING TEAM');
+  await page.getByText('Ich habe die erkannte Tabelle geprüft').click();
+  await page.getByRole('button', { name: /Abgleichen/ }).click();
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr td:nth-child(5) .badge').length === 18);
+  await page.getByRole('button', { name: /Bestätigte Zeilen übernehmen/ }).click();
+  await page.waitForSelector('text=Import gespeichert');
+  const pdfRes = await page.evaluate(async () => {
+    const { db } = window.__lk;
+    const ed = (await db.editions.toArray()).find((e) => e.name === 'PDF-Rennen');
+    const ps = await db.participations.where('editionId').equals(ed.id).toArray();
+    return { n: ps.length, b007: ps.find((p) => p.bib === '007')?.teamName, b1: ps.find((p) => p.bib === '1')?.teamName, b41: ps.find((p) => p.bib === '41')?.teamName };
+  });
+  check('PDF', 'PDF-Startliste offline importiert; Korrektur aus der Prüftabelle übernommen', pdfRes.n >= 16 && pdfRes.b007 === 'ZERO ONE' && pdfRes.b1 === 'ALPENFIRN RACING TEAM' && pdfRes.b41 === 'TEAM KAIZEN', JSON.stringify(pdfRes));
 
   // Restore in leerem, mit App-Code vorbereitetem Browserbestand (Nr. 13)
   await page.evaluate(async () => {
@@ -196,7 +252,7 @@ try {
   await page.getByRole('button', { name: 'Aktuellen Bestand ersetzen' }).click();
   await page.waitForSelector('text=Wiederhergestellt');
   const restored = await page.evaluate(async () => ({ riders: await window.__lk.db.riders.count(), editions: await window.__lk.db.editions.count() }));
-  check(13, 'Offline-Wiederherstellung aus Archiv in geleertem Bestand', restored.riders > 50000 && restored.editions === 2, JSON.stringify(restored));
+  check(13, 'Offline-Wiederherstellung aus Archiv in geleertem Bestand', restored.riders > 50000 && restored.editions === 3, JSON.stringify(restored));
 } catch (e) {
   check('!', 'Unerwarteter Abbruch', false, String(e && e.stack || e));
   await page.screenshot({ path: `${screens}/fehler.png` }).catch(() => {});

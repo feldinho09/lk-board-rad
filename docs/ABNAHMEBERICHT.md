@@ -43,6 +43,19 @@ Legende: ✅ bestanden (automatisiert geprüft) · 🟡 teilweise / nur Teilaspe
 
 Rennen (Eintages-/Etappenrennen, Prolog/EZF/MZF, Halbetappen über Reihenfolge), Status und Archivierung · rennunabhängige Fahrerverwaltung mit Aliasnamen, Aussprache, 3 Schlüsselfakten, Notizen und Teilnahmehistorie · Startlistenimport CSV/XLSX/Einfügen mit Spaltenerkennung, speicherbaren Zuordnungen, Zeilenstatus, Endzustandsprüfung, atomarem Commit, Protokoll, Fehlerbericht und sicherer Rücknahme · Live-Ansicht (Startliste mit Filtern, Fahrerkarte mit Rennkorrektur, Vergleich bis 4, Wertungen mit Stand-Beschriftung und „Neuer Stand verfügbar“, Renngruppen mit Abstand/Messzeit, Ereignisprotokoll mit Rennzeit) · Rennuhr · Suche (Startnummer zuerst, akzentfrei) · Tastenkürzel · hell/dunkel/Kontrast, große Schrift · Bereitschaftscheck · Archiv-Sicherung mit Prüfsummen, Wiederherstellung, Wiederherstellungspunkte · druckbare Notfallübersicht · fiktive Demo-Rundfahrt · Service Worker mit Offline-Start.
 
+## Ergänzung 0.1.1 – PDF- und Link-Import
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| PDF mit Teamblöcken nebeneinander (2 Seiten), Sonderzeichen, Nr. 007 | ✅ | Unit-Test mit echtem PDF + e2e **offline** im Browser |
+| PDF als Tabelle (Spalten nach Position), automatische Spaltenzuordnung | ✅ | Unit-Test + e2e |
+| Kontrollierbare Zwischenstufe (Bauplan 7): Werte korrigierbar, Abgleich erst nach Bestätigung | ✅ | e2e: Abgleich-Knopf vorher gesperrt, Korrektur wird übernommen |
+| PDF ohne Textebene (Scan) | 🟡 | Klare Meldung statt erfundener Einträge; OCR nicht umgesetzt (Etappe D) |
+| Link zu PDF/CSV/XLSX/HTML-Tabelle | 🟡 | e2e mit simuliertem Veranstalter-Server **mit** CORS-Freigabe. Seiten ohne CORS-Freigabe sind aus dem Browser nicht lesbar → verständliche Meldung; automatischer Abruf folgt mit dem Importserver |
+| ProCyclingStats-Link | ✅ | wird ohne autorisierten Zugang bewusst nicht abgerufen (e2e) |
+
+Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Teams nur als Fußnote) werden unvollständig erkannt – die Prüftabelle zeigt das, und „Tabelle (Spalten nach Position)“ ist die Ausweichvariante.
+
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 
 1. Konfigurierbares Board (Blöcke, Vorlagen) mit Entwurf → Vorschau → Freigabe.
