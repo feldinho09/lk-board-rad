@@ -10,6 +10,7 @@ import { ageAt, formatClock, formatDuration, formatGap } from '../domain/text';
 import { useApp, isTyping } from './state';
 import { currentRaceClockSec } from './RaceClock';
 import { pcsDisplayName } from './PcsRankingPanel';
+import { LiveSearch } from './LiveSearch';
 
 export function bibSort(a: { bib: string }, b: { bib: string }): number {
   const na = Number(a.bib), nb = Number(b.bib);
@@ -54,6 +55,7 @@ export function LiveView() {
         <StartList parts={parts} riders={riders} />
       </section>
       <section className="col-mid" aria-label="Fahrerkarte">
+        <LiveSearch />
         <RiderCards edition={edition} parts={parts} riders={riders} stage={stage} stages={sortedStages} standings={standings} />
       </section>
       <section className="col-right" aria-label="Rennsituation">

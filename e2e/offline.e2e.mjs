@@ -201,6 +201,30 @@ try {
   await page.waitForSelector('.card.primary .rider-name:has-text("Øvrebø")', { timeout: 5000 }).catch(() => {});
   const selName = await page.locator('.card.primary .rider-name').textContent();
   check(18, 'Suche per Tastatur (ohne Akzente) wählt Fahrer', /Øvrebø/.test(hit) && /Øvrebø/.test(selName), selName);
+  // Einzeltasten: Ziffern starten direkt die Startnummernsuche, „S“ die Namenssuche – ohne Klick
+  await page.locator('.riders li').nth(5).click(); // Fokus liegt irgendwo in der Startliste
+  await page.keyboard.type('31');
+  const liveFocus = await page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
+  const liveVal = await page.locator('.live-search input').inputValue();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.card.primary .big-bib:has-text("31")', { timeout: 5000 }).catch(() => {});
+  const bibSel = await page.locator('.card.primary .big-bib').textContent();
+  await page.keyboard.press('s');
+  await page.keyboard.type('brandli');
+  await page.waitForSelector('.live-hits li:first-child:has-text("Brändli")');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.card.primary .rider-name:has-text("Brändli")', { timeout: 5000 }).catch(() => {});
+  const sSel = await page.locator('.card.primary .rider-name').textContent();
+  const box = await page.locator('.live-search input').boundingBox();
+  const centered = box && Math.abs(box.x + box.width / 2 - 720) < 160 && box.y < 220;
+  // P/F/N bleiben Kürzel und lösen keine Suche aus
+  await page.keyboard.press('p');
+  const pNoSearch = (await page.locator('.live-search input').inputValue()) === '';
+  check('Suche', 'Live-Suche zentral; Ziffern = Startnummer, „S“ = Name, ohne vorherigen Klick',
+    liveFocus === 'Fahrer suchen' && liveVal === '31' && bibSel === '31' && /Brändli/.test(sSel) && centered && pNoSearch,
+    `Fokus ${liveFocus}, Feld „${liveVal}“, gewählt Nr. ${bibSel}, S→${sSel}, Feldmitte x=${box && Math.round(box.x + box.width / 2)} y=${box && Math.round(box.y)}`);
+  await page.screenshot({ path: `${screens}/live-suche.png` });
+  await page.keyboard.press('p'); // Anheften rückgängig
   await page.keyboard.press('n');
   await page.keyboard.type('Attacke am Schlussanstieg');
   await page.keyboard.press('Enter');

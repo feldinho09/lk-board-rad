@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { search, type SearchHit } from '../domain/search';
 import { useApp } from './state';
 
-export function SearchDialog({ onClose }: { onClose: () => void }) {
+export function SearchDialog({ onClose, initial = '' }: { onClose: () => void; initial?: string }) {
   const app = useApp();
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(initial);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [hitsFor, setHitsFor] = useState('');
   const [idx, setIdx] = useState(0);

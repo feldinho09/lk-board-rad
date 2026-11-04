@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, alive, onSaveState, type SaveState } from '../db/db';
 import type { Stage } from '../domain/types';
@@ -6,6 +6,7 @@ import { AppStateProvider, useApp, useRoute, isTyping } from './state';
 import { onSwState, applyUpdate } from './swClient';
 import { RaceClock } from './RaceClock';
 import { SearchDialog } from './SearchDialog';
+import { openLiveSearch } from './LiveSearch';
 import { LiveView } from './LiveView';
 import { RacesView } from './RacesView';
 import { RidersView } from './RidersView';
@@ -37,20 +38,30 @@ const NAV: [string, string][] = [
 function Shell() {
   const app = useApp();
   const [route, go] = useRoute();
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState<false | string>(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const overlayOpen = useRef(false);
+  overlayOpen.current = searchOpen !== false || helpOpen;
 
   useEffect(() => {
+    /** Suche öffnen: im Live-Modus das zentrale Feld über der Fahrerkarte, sonst den Dialog. */
+    const startSearch = (initial: string) => {
+      if (document.querySelector('.live-search input')) openLiveSearch(initial);
+      else setSearchOpen(initial);
+    };
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setSearchOpen(true);
+        startSearch('');
         return;
       }
       if (e.key === 'Escape') { setSearchOpen(false); setHelpOpen(false); return; }
-      if (isTyping(e)) return;
-      if (e.key === '?') setHelpOpen((v) => !v);
-      if (e.key === '/') { e.preventDefault(); setSearchOpen(true); }
+      // Einzeltasten nur, wenn nicht gerade geschrieben wird und kein Dialog offen ist
+      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || overlayOpen.current) return;
+      if (e.key === '?') { setHelpOpen(true); return; }
+      if (e.key === '/' || e.key === 's' || e.key === 'S') { e.preventDefault(); startSearch(''); return; }
+      // Ziffer = Startnummernsuche direkt beginnen (z. B. „2“ „1“ Enter)
+      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); startSearch(e.key); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -71,7 +82,7 @@ function Shell() {
 
   return (
     <div className={`shell mode-${app.mode}`}>
-      <Header page={page} go={go} onSearch={() => setSearchOpen(true)} onHelp={() => setHelpOpen(true)} />
+      <Header page={page} go={go} onSearch={() => (document.querySelector('.live-search input') ? openLiveSearch('') : setSearchOpen(''))} onHelp={() => setHelpOpen(true)} />
       <DemoBanner />
       <SaveErrorBanner />
       <main className="main">
@@ -82,7 +93,7 @@ function Shell() {
         {page === 'sicherung' && <BackupView />}
         {page === 'check' && <CheckView />}
       </main>
-      {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
+      {searchOpen !== false && <SearchDialog initial={searchOpen} onClose={() => setSearchOpen(false)} />}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
       <DialogHost />
     </div>
@@ -215,7 +226,8 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
         <h2>Tastenkürzel</h2>
         <table className="table">
           <tbody>
-            <tr><td><kbd>Strg/Cmd</kbd>+<kbd>K</kbd> oder <kbd>/</kbd></td><td>Suche (Startnummer oder Name)</td></tr>
+            <tr><td><kbd>0</kbd>–<kbd>9</kbd></td><td>Startnummer direkt eintippen, <kbd>Enter</kbd> wählt den Fahrer</td></tr>
+            <tr><td><kbd>S</kbd>, <kbd>/</kbd> oder <kbd>Strg/Cmd</kbd>+<kbd>K</kbd></td><td>Suche (Name, auch ohne Akzente)</td></tr>
             <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Startliste durchgehen (wenn Liste fokussiert)</td></tr>
             <tr><td><kbd>P</kbd></td><td>Ausgewählten Fahrer anheften / lösen</td></tr>
             <tr><td><kbd>F</kbd></td><td>Favorit umschalten</td></tr>

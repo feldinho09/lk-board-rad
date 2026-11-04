@@ -177,3 +177,10 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4p
 .pdf-grid input:focus { border-color: var(--accent); background: var(--bg); }
 .form label.confirm, .pdf-review .confirm { flex-direction: row; align-items: center; gap: 6px; font-size: 1em; color: var(--text); margin-top: 8px; }
 .brand .build { font-weight: 400; font-size: .7em; color: var(--muted); margin-left: 4px; }
+/* Zentrale Live-Suche über der Fahrerkarte */
+.live-search { position: sticky; top: 0; z-index: 5; margin-bottom: 8px; background: var(--bg); padding-bottom: 2px; }
+.live-search input { width: 100%; font-size: 1.35em; padding: 10px 14px; border: 2px solid var(--line); border-radius: 10px; background: var(--panel); }
+.live-search input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+.live-hits { position: absolute; left: 0; right: 0; top: 100%; margin: 4px 0 0; background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 6; max-height: 60vh; }
+.live-hits li { font-size: 1.1em; }
+.live-hits li.outside { opacity: .55; cursor: default; }
