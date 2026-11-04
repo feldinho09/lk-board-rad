@@ -133,6 +133,49 @@ try {
   });
   check('PCS-Kopie', 'Kopierte PCS-Startliste erkannt und importiert', /Fiktivia Classic 2026.*4 Fahrer in 2 Teams \(laut PCS: 4\)/.test(pcsBanner) && pcsRes.length === 4 && pcsRes.includes("1:Seán O'Neill:Team Testwerk"), JSON.stringify(pcsRes));
 
+  // Manuell kopierte PCS-Rangliste speichern, in Live ansehen, Korrektur kommt als „Neuer Stand verfügbar“
+  const rankText = (gap) => ['search', 'Home', '2026   »   12th Fiktivia Classic ME (1.Pro)', 'One day race   »   Nordstadt  ›  Südstadt   (201.5km)',
+    'Rnk\tRider\tTeam\tUCI\tPCS\t\tTimelag',
+    '1\t ŁUKASZEWICZ Paweł', 'Squadra Prova\t125\t100\t\t4:51:12',
+    "2\t O'NEILL Seán", 'Team Testwerk\t85\t70\t\t,,',
+    '3\t RENARD-DUPONT Jean-Luc', `Team Testwerk\t70\t50\t\t${gap}`,
+    'DNF\t VAN DEN AKKER Joris', 'Squadra Prova\t\t\t\t',
+    'Race information', 'Pageload 0.02s'].join('\r\n');
+  const pasteRanking = async (gap) => {
+    await page.goto(URL + '#import');
+    await page.locator('fieldset select').first().selectOption({ label: 'PCS-Kopie-Rennen' });
+    await page.getByPlaceholder(/Aus Excel/).fill(rankText(gap));
+    await page.getByRole('button', { name: 'Eingefügte Tabelle laden' }).click();
+    await page.waitForSelector('text=ProCyclingStats-Rangliste (manuell kopiert)');
+    await page.getByRole('button', { name: 'Wertungsstand speichern' }).click();
+    return (await page.locator('.banner.ok').last().textContent()) ?? '';
+  };
+  const first = await pasteRanking('0:12');
+  await page.screenshot({ path: `${screens}/pcs-rangliste.png`, fullPage: true });
+  const again = await pasteRanking('0:12');
+  const pcsEdId = await page.evaluate(async () => (await window.__lk.db.editions.toArray()).find((e) => e.name === 'PCS-Kopie-Rennen').id);
+  const dnf = await page.evaluate(async (id) => (await window.__lk.db.participations.where('editionId').equals(id).toArray()).find((p) => p.bib === '11').status, pcsEdId);
+  await page.goto(URL + '#live');
+  await page.getByLabel('Aktives Rennen').selectOption(pcsEdId);
+  await page.waitForSelector('.standing-label');
+  const lbl1 = await page.locator('.standing-label').textContent();
+  const row3 = await page.locator('.standings tbody tr').nth(2).textContent();
+  // Korrektur importieren, während die Live-Ansicht in einem zweiten Tab offen ist
+  const live = await ctx.newPage();
+  await live.goto(URL + '#live');
+  await live.waitForSelector('.standings tbody tr');
+  const corrected = await pasteRanking('0:14');
+  await live.waitForSelector('text=Neuer Stand verfügbar', { timeout: 10000 });
+  const stillOld = await live.locator('.standings tbody tr').nth(2).textContent();
+  await live.getByRole('button', { name: /Neuer Stand verfügbar/ }).click();
+  const nowNew = await live.locator('.standings tbody tr').nth(2).textContent();
+  await live.close();
+  check('PCS-Rangliste', 'Kopierte PCS-Rangliste gespeichert; gleiche Daten keine neue Revision; DNF übernommen',
+    /Revision 1/.test(first) && /Unverändert/.test(again) && dnf === 'DNF' && /Etappenergebnis Rennen – PCS \(manuell kopiert\)/.test(lbl1) && /\+0:12/.test(row3),
+    `${first.slice(0, 30)} | ${again.slice(0, 30)} | Status Nr. 11: ${dnf} | ${lbl1}`);
+  check(28, 'Korrektur → Revision 2; Live-Liste bleibt stehen bis „Neuer Stand verfügbar“ übernommen wird',
+    /Revision 2/.test(corrected) && /\+0:12/.test(stillOld) && /\+0:14/.test(nowNew), `vorher ${stillOld} → nachher ${nowNew}`);
+
   // Live-Ansicht Demo: Etappe 4 → Gesamtwertung zeigt Stand nach Etappe 3
   const demoId = await page.evaluate(async () => (await window.__lk.db.editions.toArray()).find((e) => e.dataOrigin === 'demo').id);
   await page.goto(URL + '#live');
@@ -293,8 +336,8 @@ try {
   await page.waitForSelector('text=Archiv geprüft');
   await page.getByRole('button', { name: 'Aktuellen Bestand ersetzen' }).click();
   await page.waitForSelector('text=Wiederhergestellt');
-  const restored = await page.evaluate(async () => ({ riders: await window.__lk.db.riders.count(), editions: await window.__lk.db.editions.count() }));
-  check(13, 'Offline-Wiederherstellung aus Archiv in geleertem Bestand', restored.riders > 50000 && restored.editions === 4, JSON.stringify(restored));
+  const restored = await page.evaluate(async () => ({ riders: await window.__lk.db.riders.count(), editions: await window.__lk.db.editions.count(), standings: (await window.__lk.db.standings.toArray()).filter((s) => s.source.startsWith('PCS')).length }));
+  check(13, 'Offline-Wiederherstellung aus Archiv in geleertem Bestand', restored.riders > 50000 && restored.editions === 4 && restored.standings >= 2, JSON.stringify(restored));
 } catch (e) {
   check('!', 'Unerwarteter Abbruch', false, String(e && e.stack || e));
   await page.screenshot({ path: `${screens}/fehler.png` }).catch(() => {});

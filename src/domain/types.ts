@@ -147,6 +147,10 @@ export interface ClassificationRow {
   status?: StartStatus;
   /** Originalwert der Quelle, unverändert */
   sourceValue?: string;
+  /** Name wie in der Quelle – auch wenn der Fahrer (noch) keinem Profil zugeordnet ist */
+  name?: string;
+  /** Platz im vorherigen Stand laut Quelle */
+  prevRank?: number | null;
 }
 
 /**
@@ -166,6 +170,8 @@ export interface ClassificationStanding extends Versioned {
   coverage: Coverage;
   unit: 'zeit' | 'punkte';
   rows: ClassificationRow[];
+  /** Inhalts-Prüfsumme: unveränderte Daten erzeugen keine neue Revision */
+  contentHash?: string;
 }
 
 export interface Note extends Versioned {

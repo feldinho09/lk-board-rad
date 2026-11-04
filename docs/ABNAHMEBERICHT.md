@@ -66,7 +66,18 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 | Kein automatischer Abruf von PCS | ✅ | PCS-Nutzungsbedingungen untersagen automatisierte Werkzeuge; die App liest nur, was der Nutzer selbst kopiert |
 | Offline-Start trotz `Vary`-Header des Servers | ✅ | Sporadischer Fehler (1 von 4 Läufen: leere Seite offline) reproduziert; Ursache: Cache-Abgleich scheiterte an `Vary: Origin`. Behoben mit `ignoreVary`; danach 6 von 6 Läufen fehlerfrei |
 
-Noch offen: Erkennung kopierter PCS-**Ranglisten** (Etappe, Gesamt, Punkte, Berg, Nachwuchs, Team) – Beispiel vom Nutzer folgt.
+### PCS-Ranglisten (manuell kopiert)
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| Etappe, Gesamt, Punkte, Berg, Nachwuchs, Team erkennen | ✅ | Lokal mit echten Kopien (Tour de France 2026, Etappe 2): 184 / 183 / 30 / 9 / 41 / 23 Zeilen, alle Fahrer zugeordnet, DNS erkannt. Unit-Tests mit nachgebildetem Aufbau |
+| Spalten über die Kopfzeile, nicht über Position geraten (UCI-/PCS-Punkte ≠ Zeit) | ✅ | Unit-Test |
+| „,,“ = gleiche Zeit, Siegerzeit absolut, DNS/DNF ohne Platz und Zeit | ✅ | Unit-Test |
+| General vs. Today bei Punkten nicht sicher erkennbar | ✅ | App verlangt Bestätigung „Reiter General“ statt zu raten |
+| Nr. 28: gleiche Daten → keine neue Revision, Korrektur → neue Revision, alte bleibt | ✅ | Unit-Test + e2e |
+| Live-Liste bleibt beim Eintreffen eines neuen Stands stehen („Neuer Stand verfügbar“) | ✅ | e2e mit zweitem Tab |
+| Ausfälle (DNF/DNS/OTL) optional in Teilnehmerstatus übernehmen | ✅ | e2e |
+| Fahrer ohne Profil im Rennen | ✅ | bleiben mit PCS-Namen in der Liste, markiert ⚠, keine Fehlzuordnung |
 
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 

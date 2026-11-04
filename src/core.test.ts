@@ -68,6 +68,8 @@ describe('Text & Zeit', () => {
     expect(splitFullName('VAN DER POEL Mathieu')).toEqual({ first: 'Mathieu', last: 'Van der Poel' });
     expect(splitFullName("O'BRIEN Kelland")).toEqual({ first: 'Kelland', last: "O'Brien" });
     expect(splitFullName('RENARD-HAQUIN Henri-François')).toEqual({ first: 'Henri-François', last: 'Renard-Haquin' });
+    expect(splitFullName('GROßSCHARTNER Felix')).toEqual({ first: 'Felix', last: 'Großschartner' });
+    expect(splitFullName('JOHANNESSEN Tobias Halland')).toEqual({ first: 'Tobias Halland', last: 'Johannessen' });
   });
 });
 

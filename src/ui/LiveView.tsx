@@ -9,6 +9,7 @@ import { resolveStanding } from '../domain/standings';
 import { ageAt, formatClock, formatDuration, formatGap } from '../domain/text';
 import { useApp, isTyping } from './state';
 import { currentRaceClockSec } from './RaceClock';
+import { pcsDisplayName } from './PcsRankingPanel';
 
 export function bibSort(a: { bib: string }, b: { bib: string }): number {
   const na = Number(a.bib), nb = Number(b.bib);
@@ -324,7 +325,7 @@ function StandingsPanel({ stage, stages, standings, riders }: { stage: Stage; st
               return (
                 <tr key={i} className={row.riderId && row.riderId === app.selectedRiderId ? 'sel' : ''} onClick={() => row.riderId && app.select(row.riderId)}>
                   <td>{row.rank ?? row.status ?? '–'}</td>
-                  <td>{row.teamName ?? r?.displayName ?? '(unbekannt)'}</td>
+                  <td>{row.teamName ?? r?.displayName ?? (row.name ? <span title="Keinem Profil zugeordnet">{pcsDisplayName(row.name)} ⚠</span> : '(unbekannt)')}</td>
                   <td>{shown.unit === 'punkte' ? row.points ?? '–' : row.rank === 1 ? formatDuration(row.timeSec) : row.sameTimeAsPrevious ? 'gl. Zeit' : formatGap(row.gapSec)}</td>
                 </tr>
               );

@@ -108,7 +108,8 @@ export function capitalizeNamePart(p: string, index: number): string {
 export function splitFullName(full: string): { first: string; last: string } {
   const parts = full.trim().split(/\s+/);
   if (parts.length < 2) return { first: '', last: full.trim() };
-  const isUpper = (p: string) => p === p.toLocaleUpperCase() && p !== p.toLocaleLowerCase();
+  // „ß“ hat keine Großform (GROßSCHARTNER) → für die Prüfung ausblenden
+  const isUpper = (p: string) => { const q = p.replace(/ß/g, ''); return q === q.toLocaleUpperCase() && q !== q.toLocaleLowerCase(); };
   const upper = parts.filter(isUpper);
   if (upper.length > 0 && upper.length < parts.length) {
     const last = parts.filter(isUpper).map((p, i) => capitalizeNamePart(p, i)).join(' ');

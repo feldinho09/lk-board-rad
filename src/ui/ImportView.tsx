@@ -11,7 +11,8 @@ import { saveFile, IS_ARTIFACT } from './host';
 import { readPdfText } from '../import/pdf';
 import { pdfToMatrix, type PdfMode, type PdfTextItem } from '../import/pdfLayout';
 import { loadFromLink } from '../import/link';
-import { parsePcsStartlist, pcsStartlistToMatrix, type PcsStartlist } from '../import/pcsPaste';
+import { parsePcsStartlist, pcsStartlistToMatrix, parsePcsRanking, type PcsStartlist, type PcsRanking } from '../import/pcsPaste';
+import { PcsRankingPanel } from './PcsRankingPanel';
 import { useApp } from './state';
 
 const IMPORT_TEMPLATE = '\uFEFFStartnummer;Vorname;Nachname;Team;Kategorie;Nation;Geburtsdatum;UCI-ID;PCS-Kennung\r\n001;Vorname;Nachname;Teamname;Elite;SUI;1999-04-12;;\r\n002;Zweiter;Fahrer;Teamname;Elite;GER;2001;;\r\n';
@@ -39,6 +40,7 @@ export function ImportView() {
   const [busy, setBusy] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [pcs, setPcs] = useState<PcsStartlist | null>(null);
+  const [ranking, setRanking] = useState<PcsRanking | null>(null);
   const mappings = useLiveQuery(() => db.mappings.toArray().then(alive), []) ?? [];
   const existingParts = useLiveQuery(() => (editionId ? db.participations.where('editionId').equals(editionId).toArray().then(alive) : []), [editionId]) ?? [];
   const live = app.mode === 'live';
@@ -50,10 +52,12 @@ export function ImportView() {
 
   const useMatrices = (m: Record<string, unknown[][]>, name: string, items: PdfTextItem[] | null = null) => {
     setMatrices(m); setSheet(Object.keys(m)[0]); setSourceName(name); setMapping({}); setHeaderRow(1);
-    setPdfItems(items); setReviewed(false); setPcs(null);
+    setPdfItems(items); setReviewed(false); setPcs(null); setRanking(null);
   };
   /** Kopierter Text: erst auf PCS-Startliste prüfen, sonst als Tabelle lesen. */
   const useText = (text: string, name: string): void => {
+    const rk = parsePcsRanking(text);
+    if (rk) { setMatrices({}); setSheet(''); setPdfItems(null); setPcs(null); setRanking(rk); return; }
     const p = parsePcsStartlist(text);
     if (p) {
       const label = `PCS (manuell kopiert): ${p.meta.raceName ?? name}${p.meta.year ? ` ${p.meta.year}` : ''}`;
@@ -250,6 +254,8 @@ export function ImportView() {
       )}
 
       {busy && <div className="banner warn" role="status">{busy}</div>}
+      {ranking && <PcsRankingPanel ranking={ranking} editionId={editionId} />}
+
       {error && <div className="banner err" role="alert" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
 
       {result && <MatchTable result={result} decisions={decisions} setDecisions={setDecisions} />}

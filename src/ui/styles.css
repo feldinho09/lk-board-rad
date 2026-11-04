@@ -175,4 +175,4 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4p
 .pdf-grid { max-height: 55vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
 .pdf-grid input { padding: 2px 4px; border-color: transparent; background: transparent; }
 .pdf-grid input:focus { border-color: var(--accent); background: var(--bg); }
-.pdf-review .confirm { flex-direction: row; align-items: center; gap: 6px; font-size: 1em; color: var(--text); margin-top: 8px; }
+.form label.confirm, .pdf-review .confirm { flex-direction: row; align-items: center; gap: 6px; font-size: 1em; color: var(--text); margin-top: 8px; }
