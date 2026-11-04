@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE);
-        const cached = await cache.match('./index.html');
+        const cached = await cache.match('./index.html', { ignoreVary: true });
         if (cached) return cached;
         return fetch(req);
       })(),
@@ -52,7 +52,12 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
-      const cached = await cache.match(req, { ignoreSearch: true });
+      // ignoreVary: Server senden oft „Vary: Origin“ o. ä.; Modul-Skripte werden mit
+      // Origin-Header angefragt → ohne ignoreVary findet der Cache die Datei offline
+      // nicht (in Tests reproduziert). Für die eigenen, versionierten Dateien ist das sicher.
+      const cached =
+        (await cache.match(req, { ignoreSearch: true, ignoreVary: true })) ||
+        (await cache.match(url.origin + url.pathname, { ignoreVary: true }));
       if (cached) return cached;
       return fetch(req);
     })(),

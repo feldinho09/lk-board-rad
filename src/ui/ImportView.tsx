@@ -11,6 +11,7 @@ import { saveFile, IS_ARTIFACT } from './host';
 import { readPdfText } from '../import/pdf';
 import { pdfToMatrix, type PdfMode, type PdfTextItem } from '../import/pdfLayout';
 import { loadFromLink } from '../import/link';
+import { parsePcsStartlist, pcsStartlistToMatrix, type PcsStartlist } from '../import/pcsPaste';
 import { useApp } from './state';
 
 const IMPORT_TEMPLATE = '\uFEFFStartnummer;Vorname;Nachname;Team;Kategorie;Nation;Geburtsdatum;UCI-ID;PCS-Kennung\r\n001;Vorname;Nachname;Teamname;Elite;SUI;1999-04-12;;\r\n002;Zweiter;Fahrer;Teamname;Elite;GER;2001;;\r\n';
@@ -37,6 +38,7 @@ export function ImportView() {
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [pcs, setPcs] = useState<PcsStartlist | null>(null);
   const mappings = useLiveQuery(() => db.mappings.toArray().then(alive), []) ?? [];
   const existingParts = useLiveQuery(() => (editionId ? db.participations.where('editionId').equals(editionId).toArray().then(alive) : []), [editionId]) ?? [];
   const live = app.mode === 'live';
@@ -48,7 +50,16 @@ export function ImportView() {
 
   const useMatrices = (m: Record<string, unknown[][]>, name: string, items: PdfTextItem[] | null = null) => {
     setMatrices(m); setSheet(Object.keys(m)[0]); setSourceName(name); setMapping({}); setHeaderRow(1);
-    setPdfItems(items); setReviewed(false);
+    setPdfItems(items); setReviewed(false); setPcs(null);
+  };
+  /** Kopierter Text: erst auf PCS-Startliste prüfen, sonst als Tabelle lesen. */
+  const useText = (text: string, name: string): void => {
+    const p = parsePcsStartlist(text);
+    if (p) {
+      const label = `PCS (manuell kopiert): ${p.meta.raceName ?? name}${p.meta.year ? ` ${p.meta.year}` : ''}`;
+      useMatrices({ [label]: pcsStartlistToMatrix(p) }, label);
+      setPcs(p);
+    } else useMatrices({ [name]: parseDelimited(text) }, name);
   };
   const loadPdf = async (bytes: Uint8Array, name: string, mode = pdfMode) => {
     const items = await readPdfText(bytes);
@@ -64,7 +75,13 @@ export function ImportView() {
       if (f.size > 20 * 1024 * 1024) throw new Error('Datei größer als 20 MB – bitte prüfen.');
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf';
       if (isPdf) await loadPdf(new Uint8Array(await f.arrayBuffer()), f.name);
-      else { const { matrices } = await parseFile(f); useMatrices(matrices, f.name); }
+      else if (/\.xlsx$/i.test(f.name)) { const { matrices } = await parseFile(f); useMatrices(matrices, f.name); }
+      else {
+        const buf = await f.arrayBuffer();
+        let text = new TextDecoder('utf-8').decode(buf);
+        if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buf);
+        useText(text.replace(/^\uFEFF/, ''), f.name);
+      }
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     setBusy('');
   };
@@ -96,8 +113,7 @@ export function ImportView() {
   };
   const loadPaste = () => {
     reset();
-    setPdfItems(null);
-    setMatrices({ Zwischenablage: parseDelimited(paste) }); setSheet('Zwischenablage'); setSourceName('Eingefügte Tabelle'); setMapping({}); setHeaderRow(1);
+    useText(paste, 'Eingefügte Tabelle');
   };
   const runMatch = async () => {
     if (!table || !editionId) return;
@@ -149,7 +165,7 @@ export function ImportView() {
             : 'Funktioniert nur, wenn die Seite den Abruf aus dem Browser erlaubt (CORS). Sonst Datei speichern und hier ablegen. ProCyclingStats nur über autorisierten Zugang.'}</span>
         </label>
         <label className="wide">… oder Tabelle einfügen
-          <textarea rows={4} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="Aus Excel/Browser kopierte Tabelle mit Kopfzeile" />
+          <textarea rows={4} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="Aus Excel/Browser kopierte Tabelle mit Kopfzeile – oder ganze PCS-Startlistenseite (Strg A, Strg C)" />
         </label>
         <button disabled={!paste.trim()} onClick={loadPaste}>Eingefügte Tabelle laden</button>
       </fieldset>
@@ -181,6 +197,13 @@ export function ImportView() {
             const name = await promptDialog('Name der Zuordnung (z. B. Veranstalter)');
             if (name) await mutate(['mappings'], (w) => w.put('mappings', newRecord({ name, mapping } as Omit<SavedMapping, 'id' | 'rev' | 'createdAt' | 'updatedAt'>)));
           }}>Zuordnung speichern</button>
+          {pcs && (
+            <div className="wide banner ok" style={{ margin: 0 }}>
+              <strong>ProCyclingStats-Startliste erkannt</strong> (manuell kopiert): {pcs.meta.raceName ?? '–'}{pcs.meta.year ? ` ${pcs.meta.year}` : ''}{pcs.meta.raceClass ? ` (${pcs.meta.raceClass})` : ''}{pcs.meta.distanceKm ? ` · ${pcs.meta.distanceKm} km` : ''}
+              {' · '}{pcs.entries.length} Fahrer in {pcs.teams.length} Teams{pcs.meta.expectedRiders != null ? ` (laut PCS: ${pcs.meta.expectedRiders})` : ''}
+              {pcs.warnings.map((w) => <div key={w} className="warn">⚠ {w}</div>)}
+            </div>
+          )}
           {pdfItems && (
             <div className="wide pdf-review">
               <h3>Aus dem PDF erkannte Tabelle – bitte prüfen</h3>

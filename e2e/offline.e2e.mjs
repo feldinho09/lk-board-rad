@@ -108,6 +108,31 @@ try {
   });
   check('PDF/Link', 'PDF über Link geladen; Abgleich erst nach Prüf-Bestätigung', abgleichDisabled && linkParts.length >= 2, `Abgleich vorher gesperrt: ${abgleichDisabled}; Nummern ${JSON.stringify(linkParts)}`);
 
+  // Manuell kopierte PCS-Startliste (Aufbau nachgebildet, Namen erfunden)
+  const pcsPaste = ['search', 'Home', '2025', '2026', '2026   »   12th Fiktivia Classic ME (1.Pro)', 'One day race   »   Nordstadt  ›  Südstadt   (201.5km)',
+    'Startlist', '4 riders', 'Team Testwerk (WT)', "1O'NEILL Seán", '2RENARD-DUPONT Jean-Luc', 'DS MUSTER Max', 'team statistics in race',
+    'Squadra Prova (PRT)', '11VAN DEN AKKER Joris', '12ŁUKASZEWICZ Paweł', 'DS UNO Ugo', 'team statistics in race', 'Startlist', 'Tour de France'].join('\r\n');
+  await page.goto(URL + '#rennen');
+  await page.getByLabel('Name').first().fill('PCS-Kopie-Rennen');
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+  await page.goto(URL + '#import');
+  await page.locator('fieldset select').first().selectOption({ label: 'PCS-Kopie-Rennen' });
+  await page.getByPlaceholder(/Aus Excel/).fill(pcsPaste);
+  await page.getByRole('button', { name: 'Eingefügte Tabelle laden' }).click();
+  const pcsBanner = await page.locator('text=ProCyclingStats-Startliste erkannt').locator('..').textContent();
+  await page.getByRole('button', { name: /Abgleichen/ }).click();
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr td:nth-child(5) .badge').length === 4);
+  await page.getByRole('button', { name: /Bestätigte Zeilen übernehmen/ }).click();
+  await page.waitForSelector('text=Import gespeichert');
+  const pcsRes = await page.evaluate(async () => {
+    const { db } = window.__lk;
+    const ed = (await db.editions.toArray()).find((e) => e.name === 'PCS-Kopie-Rennen');
+    const ps = await db.participations.where('editionId').equals(ed.id).toArray();
+    const rs = await db.riders.bulkGet(ps.map((p) => p.riderId));
+    return ps.map((p, i) => `${p.bib}:${rs[i].displayName}:${p.teamName}`).sort();
+  });
+  check('PCS-Kopie', 'Kopierte PCS-Startliste erkannt und importiert', /Fiktivia Classic 2026.*4 Fahrer in 2 Teams \(laut PCS: 4\)/.test(pcsBanner) && pcsRes.length === 4 && pcsRes.includes("1:Seán O'Neill:Team Testwerk"), JSON.stringify(pcsRes));
+
   // Live-Ansicht Demo: Etappe 4 → Gesamtwertung zeigt Stand nach Etappe 3
   const demoId = await page.evaluate(async () => (await window.__lk.db.editions.toArray()).find((e) => e.dataOrigin === 'demo').id);
   await page.goto(URL + '#live');
@@ -177,8 +202,25 @@ try {
   ctx = await launch();
   await ctx.setOffline(true);
   page = ctx.pages()[0] ?? (await ctx.newPage());
+  globalThis.__page = page;
+  const offlineLog = [];
+  page.on('console', (m) => offlineLog.push(`console.${m.type()}: ${m.text()}`));
+  page.on('pageerror', (e) => offlineLog.push(`pageerror: ${e.message}`));
+  page.on('requestfailed', (r) => offlineLog.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`));
+  page.on('response', (r) => { if (r.status() >= 400) offlineLog.push(`response ${r.status()}: ${r.url()}`); });
   await page.goto(URL + '#live');
-  await page.waitForSelector('.riders li', { timeout: 20000 });
+  try {
+    await page.waitForSelector('.riders li', { timeout: 20000 });
+  } catch (e) {
+    const diag = await page.evaluate(async () => ({
+      controller: !!navigator.serviceWorker.controller,
+      caches: await caches.keys(),
+      cached: (await Promise.all((await caches.keys()).map(async (k) => (await (await caches.open(k)).keys()).map((r) => r.url.split('/').pop())))).flat(),
+      html: document.documentElement.outerHTML.slice(0, 300),
+    })).catch((x) => String(x));
+    console.log('DIAGNOSE offline:', JSON.stringify(diag, null, 1), '\n' + offlineLog.join('\n'));
+    throw e;
+  }
   const n = await page.locator('.riders li').count();
   const evOk = await page.locator('text=Attacke am Schlussanstieg').count();
   check('1/23', 'Offline nach Browser-Neustart ohne Server: App, Rennen, Startliste, Ereignisse verfügbar', n === 16 && evOk > 0, `${n} Fahrer`);
@@ -252,7 +294,7 @@ try {
   await page.getByRole('button', { name: 'Aktuellen Bestand ersetzen' }).click();
   await page.waitForSelector('text=Wiederhergestellt');
   const restored = await page.evaluate(async () => ({ riders: await window.__lk.db.riders.count(), editions: await window.__lk.db.editions.count() }));
-  check(13, 'Offline-Wiederherstellung aus Archiv in geleertem Bestand', restored.riders > 50000 && restored.editions === 3, JSON.stringify(restored));
+  check(13, 'Offline-Wiederherstellung aus Archiv in geleertem Bestand', restored.riders > 50000 && restored.editions === 4, JSON.stringify(restored));
 } catch (e) {
   check('!', 'Unerwarteter Abbruch', false, String(e && e.stack || e));
   await page.screenshot({ path: `${screens}/fehler.png` }).catch(() => {});

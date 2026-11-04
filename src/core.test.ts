@@ -65,7 +65,9 @@ describe('Text & Zeit', () => {
   });
   it('trennt PCS-Namensstil', () => {
     expect(splitFullName('POGAČAR Tadej')).toEqual({ first: 'Tadej', last: 'Pogačar' });
-    expect(splitFullName('VAN DER POEL Mathieu')).toEqual({ first: 'Mathieu', last: 'Van Der Poel' });
+    expect(splitFullName('VAN DER POEL Mathieu')).toEqual({ first: 'Mathieu', last: 'Van der Poel' });
+    expect(splitFullName("O'BRIEN Kelland")).toEqual({ first: 'Kelland', last: "O'Brien" });
+    expect(splitFullName('RENARD-HAQUIN Henri-François')).toEqual({ first: 'Henri-François', last: 'Renard-Haquin' });
   });
 });
 

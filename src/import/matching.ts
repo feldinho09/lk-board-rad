@@ -95,6 +95,15 @@ export function guessMapping(headers: string[]): Mapping {
   return m;
 }
 
+const PARTICLES = new Set(['van', 'der', 'den', 'de', 'del', 'della', 'di', 'da', 'du', 'des', 'la', 'le', 'von', 'ten', 'ter', 'y']);
+/** "O'BRIEN" → "O'Brien", "RENARD-HAQUIN" → "Renard-Haquin", "VAN DER POEL" → "Van der Poel".
+ *  Nur Darstellung – Abgleich und Suche sind unabhängig von Groß-/Kleinschreibung. */
+export function capitalizeNamePart(p: string, index: number): string {
+  const low = p.toLocaleLowerCase();
+  if (index > 0 && PARTICLES.has(low)) return low;
+  return low.replace(/(^|[-'’])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toLocaleUpperCase());
+}
+
 /** "POGAČAR Tadej" (PCS-Stil) oder "Tadej Pogačar" → Vor-/Nachname, Original bleibt displayName */
 export function splitFullName(full: string): { first: string; last: string } {
   const parts = full.trim().split(/\s+/);
@@ -102,7 +111,7 @@ export function splitFullName(full: string): { first: string; last: string } {
   const isUpper = (p: string) => p === p.toLocaleUpperCase() && p !== p.toLocaleLowerCase();
   const upper = parts.filter(isUpper);
   if (upper.length > 0 && upper.length < parts.length) {
-    const last = parts.filter(isUpper).map((p) => p.charAt(0) + p.slice(1).toLocaleLowerCase()).join(' ');
+    const last = parts.filter(isUpper).map((p, i) => capitalizeNamePart(p, i)).join(' ');
     const first = parts.filter((p) => !isUpper(p)).join(' ');
     return { first, last };
   }

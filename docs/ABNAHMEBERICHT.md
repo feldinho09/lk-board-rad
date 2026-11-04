@@ -56,6 +56,18 @@ Rennen (Eintages-/Etappenrennen, Prolog/EZF/MZF, Halbetappen über Reihenfolge),
 
 Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Teams nur als Fußnote) werden unvollständig erkannt – die Prüftabelle zeigt das, und „Tabelle (Spalten nach Position)“ ist die Ausweichvariante.
 
+## Ergänzung 0.1.2 – PCS-Inhalte per Kopieren & Einfügen, Offline-Fehler behoben
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| Manuell kopierte PCS-Startliste (Strg A / Strg C) erkennen | ✅ | Unit-Tests (nachgebildeter Aufbau, erfundene Namen) + e2e; zusätzlich lokal mit einer echten Kopie geprüft: 175 von 175 Fahrern, 25 Teams, Rennname/Jahr/Klasse/Distanz erkannt |
+| Abgleich der erkannten Zahl mit der PCS-Angabe „N riders“ | ✅ | Warnung bei Abweichung (Unit-Test) |
+| Normale Tabellen nicht fälschlich als PCS erkennen | ✅ | Beim Testen gefundener Fehler (Tab-Tabelle wurde als PCS gelesen) behoben, Regressionstest ergänzt |
+| Kein automatischer Abruf von PCS | ✅ | PCS-Nutzungsbedingungen untersagen automatisierte Werkzeuge; die App liest nur, was der Nutzer selbst kopiert |
+| Offline-Start trotz `Vary`-Header des Servers | ✅ | Sporadischer Fehler (1 von 4 Läufen: leere Seite offline) reproduziert; Ursache: Cache-Abgleich scheiterte an `Vary: Origin`. Behoben mit `ignoreVary`; danach 6 von 6 Läufen fehlerfrei |
+
+Noch offen: Erkennung kopierter PCS-**Ranglisten** (Etappe, Gesamt, Punkte, Berg, Nachwuchs, Team) – Beispiel vom Nutzer folgt.
+
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 
 1. Konfigurierbares Board (Blöcke, Vorlagen) mit Entwurf → Vorschau → Freigabe.
