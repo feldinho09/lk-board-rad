@@ -128,7 +128,7 @@ function Header({ page, go, onSearch, onHelp }: { page: string; go: (p: string) 
 
   return (
     <header className="header">
-      <div className="brand" title="LK Board Rad">LK&nbsp;Board</div>
+      <div className="brand" title={`LK Board Rad · Version ${__BUILD_ID__}`}>LK&nbsp;Board <span className="build">{__BUILD_ID__.split(' · ')[0]}</span></div>
       <div className="race-select">
         <select aria-label="Aktives Rennen" value={app.editionId ?? ''} onChange={(e) => changeEdition(e.target.value)}>
           <option value="">– Rennen wählen –</option>

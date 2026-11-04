@@ -48,6 +48,7 @@ export function CheckView() {
   return (
     <div className="page">
       <h1>Bereitschaftscheck</h1>
+      <p className="muted">App-Version: <strong>{__BUILD_ID__}</strong></p>
       <ul className="checks">
         {IS_ARTIFACT ? (
           <Item level="warn" title="Web-Version (Claude-Artefakt): kein Start ohne Internet">

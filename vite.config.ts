@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from 'vite';
+import { execSync } from 'node:child_process';
 import react from '@vitejs/plugin-react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -38,7 +39,15 @@ function artifactHtml(): Plugin {
   };
 }
 
+// Versionskennung: kurzer Git-Stand + Build-Datum, sichtbar in der App (Fehlersuche: „welche Version läuft?“)
+function buildId(): string {
+  let rev = 'lokal';
+  try { rev = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* ohne Git */ }
+  return `${rev} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
 export default defineConfig(({ mode }) => ({
+  define: { __BUILD_ID__: JSON.stringify(buildId()) },
   base: './',
   plugins: mode === 'artifact' ? [react(), artifactHtml()] : [react(), serviceWorkerPlugin()],
   publicDir: mode === 'artifact' ? false : 'public',
