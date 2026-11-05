@@ -90,6 +90,9 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 | Fahrername so groß wie Startnummer | ✅ | e2e (berechnete Schriftgröße gleich) |
 | Land/Geburtsdatum aus Wikipedia (Wikidata) mit Vorschau, nur Bestätigtes, nur leere Felder (optional überschreiben), Quelle + ID gespeichert, Wiederherstellungspunkt vorher | 🟡 | Unit-Tests + e2e gegen **simulierten** Wikidata-Server. Gegen das echte Wikidata nicht getestet, weil die Testumgebung keinen Internetzugang zu Wikimedia hat – erster echter Lauf beim Nutzer |
 | Live-Suche: Ziffern/S ohne Klick | ✅ | e2e; dabei Wettlauf beim schnellen Wiederöffnen gefunden und behoben |
+| Statistiken/Themen im Live-Modus nur lesen (kompakt, große Schrift, Etappe zuerst, leere Bereiche ausgeblendet) | ✅ | e2e: kein Eingabefeld, keine Werkzeugleiste; im Bearbeitungsmodus wieder editierbar |
+| Live-Knopf überdeckte im Live-Modus die Kopfzeile (Namenskonflikt der Stilklasse „live“) | ✅ | behoben, e2e prüft Knopfgröße |
+| Editor zeigte nach dem Laden kurz ein leeres Feld | ✅ | behoben (Inhalt vor dem ersten Zeichnen gesetzt); 4 von 4 Läufen fehlerfrei |
 
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 

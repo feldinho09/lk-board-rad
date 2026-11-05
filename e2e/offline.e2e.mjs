@@ -267,6 +267,24 @@ try {
   console.log('DIAG Statistik: Fokus', statFocus, '| DB nach Tippen', JSON.stringify(statDb1), '| DB nach Reload', JSON.stringify(statDb2), '| Editor', statHtml);
   await page.getByRole('tab', { name: 'Themen' }).click();
   const themaTxt = await page.getByRole('textbox', { name: 'Themen Etappe 4' }).textContent();
+  // Live-Modus: Statistiken/Themen nur lesen
+  await page.getByRole('button', { name: '● Live' }).click();
+  await page.getByRole('tab', { name: 'Themen' }).click();
+  await page.waitForSelector('.topic-read');
+  const liveThema = await page.locator('.topic-read').textContent();
+  await page.getByRole('tab', { name: 'Statistiken' }).click();
+  await page.waitForSelector('.topic-read:has-text("Vorjahressieger")');
+  const liveStat = await page.locator('.topic-read').innerHTML();
+  const editable = await page.locator('.col-mid [contenteditable="true"], .col-mid .rt-toolbar').count();
+  const liveBtn = await page.getByRole('button', { name: '● Live' }).boundingBox();
+  check('Kopfzeile', 'Live-Knopf im Live-Modus normal groß (kein Layout-Konflikt)', liveBtn.width < 200 && liveBtn.height < 60, `${Math.round(liveBtn.width)}×${Math.round(liveBtn.height)} px`);
+  await page.screenshot({ path: `${screens}/live-statistiken.png` });
+  check('Live-Lesen', 'Live-Modus: Statistiken/Themen nur lesbar (kein Eingabefeld, keine Werkzeugleiste), Formatierung sichtbar',
+    editable === 0 && /<b>Brändli<\/b>/.test(liveStat) && /Etappe 4.*Duell am Schlussanstieg/.test(liveThema), `${editable} bearbeitbare Elemente | ${liveThema}`);
+  await page.getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.getByRole('tab', { name: 'Themen' }).click();
+  const editAgain = await page.waitForSelector('.col-mid [contenteditable="true"]', { timeout: 5000 }).then(() => page.locator('.col-mid [contenteditable="true"]').count()).catch(() => 0);
+  check('Live-Lesen', 'Im Bearbeitungsmodus wieder bearbeitbar', editAgain >= 1, `${editAgain} Editoren`);
   await page.keyboard.type('21'); await page.keyboard.press('Enter');
   const backToCard = await page.waitForSelector('.card.primary', { timeout: 5000 }).then(() => 1).catch(() => 0);
   check('Reiter', 'Statistiken/Themen: eigener Text automatisch gespeichert, fett erhalten; Fahrerwahl wechselt zur Karte',

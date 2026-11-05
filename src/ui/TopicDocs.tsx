@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, alive, mutate, newRecord } from '../db/db';
 import type { Note, Stage, Versioned } from '../domain/types';
-import { RichText } from './RichText';
+import { RichText, RichView } from './RichText';
+import { useApp } from './state';
 
 type Kind = 'statistik' | 'thema';
 const TITLE: Record<Kind, string> = { statistik: 'Statistiken', thema: 'Themen' };
@@ -13,6 +14,8 @@ const HINT: Record<Kind, string> = {
 
 /** Eigene Sammlung „Statistiken“ oder „Themen“: ein Dokument fürs ganze Rennen und eines je Etappe. */
 export function TopicDocs({ kind, editionId, stage }: { kind: Kind; editionId: string; stage: Stage | null }) {
+  const app = useApp();
+  if (app.mode === 'live') return <TopicRead kind={kind} editionId={editionId} stage={stage} />;
   return (
     <div className="panel topic-docs">
       <h2>{TITLE[kind]}</h2>
@@ -22,11 +25,41 @@ export function TopicDocs({ kind, editionId, stage }: { kind: Kind; editionId: s
   );
 }
 
-function TopicDoc({ kind, editionId, stageId, title }: { kind: Kind; editionId: string; stageId?: string; title: string }) {
-  const note = useLiveQuery(
+function useTopicNote(kind: Kind, editionId: string, stageId?: string) {
+  return useLiveQuery(
     async () => alive(await db.notes.where('refId').equals(editionId).toArray()).find((n) => n.scope === 'edition' && n.kind === kind && (n.stageId ?? null) === (stageId ?? null)) ?? null,
     [editionId, kind, stageId],
   );
+}
+
+/**
+ * Live-Modus: nur lesen. Kompakt, große Schrift, aktuelle Etappe zuerst, leere Bereiche ausgeblendet.
+ * Bearbeiten ist bewusst nicht möglich (kein versehentliches Tippen während der Übertragung).
+ */
+function TopicRead({ kind, editionId, stage }: { kind: Kind; editionId: string; stage: Stage | null }) {
+  const stageNote = useTopicNote(kind, editionId, stage?.id);
+  const raceNote = useTopicNote(kind, editionId);
+  if (stageNote === undefined || raceNote === undefined) return null;
+  const parts = [
+    stage && stageNote?.text ? { title: stage.label, text: stageNote.text } : null,
+    raceNote?.text ? { title: 'Ganzes Rennen', text: raceNote.text } : null,
+  ].filter((x): x is { title: string; text: string } => !!x);
+  return (
+    <div className="panel topic-read" aria-label={`${TITLE[kind]} (nur lesen)`}>
+      <h2>{TITLE[kind]}</h2>
+      {parts.length === 0 && <p className="muted">Noch nichts eingetragen. Ergänzen im Bearbeitungsmodus.</p>}
+      {parts.map((p) => (
+        <section key={p.title} className="topic-read-part">
+          <h3>{p.title}</h3>
+          <RichView value={p.text} />
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function TopicDoc({ kind, editionId, stageId, title }: { kind: Kind; editionId: string; stageId?: string; title: string }) {
+  const note = useTopicNote(kind, editionId, stageId);
   const [state, setState] = useState<'idle' | 'pending' | 'saved' | 'error'>('idle');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef<string | null>(null);

@@ -156,7 +156,7 @@ function Header({ page, go, onSearch, onHelp }: { page: string; go: (p: string) 
       </div>
       <div className="mode-switch" role="group" aria-label="Modus">
         <button className={!live ? 'on' : ''} onClick={() => app.setMode('bearbeiten')} aria-pressed={!live}>Bearbeiten</button>
-        <button className={live ? 'on live' : ''} onClick={() => { app.setMode('live'); go('live'); }} aria-pressed={live}>● Live</button>
+        <button className={live ? 'on is-live' : ''} onClick={() => { app.setMode('live'); go('live'); }} aria-pressed={live}>● Live</button>
       </div>
       <RaceClock />
       <button className="search-btn" onClick={onSearch} title="Suche (Strg/Cmd+K)">Suche <kbd>Strg K</kbd></button>

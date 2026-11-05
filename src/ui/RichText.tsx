@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { HIGHLIGHTS, isRich, sanitize, toEditorHtml } from '../domain/richtext';
 
 /**
@@ -24,8 +24,9 @@ export function RichText({
   const [focused, setFocused] = useState(false);
   const [empty, setEmpty] = useState(!value);
 
-  // Externe Änderungen übernehmen, aber nie während der Nutzer tippt (kein Cursor-Springen)
-  useEffect(() => {
+  // Externe Änderungen übernehmen, aber nie während der Nutzer tippt (kein Cursor-Springen).
+  // useLayoutEffect: Inhalt steht vor dem ersten Zeichnen im Feld (kein kurzes Leer-Aufblitzen).
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el || focused) return;
     if (value !== lastSent.current || el.innerHTML === '') {

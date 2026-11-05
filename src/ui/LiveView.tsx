@@ -53,7 +53,7 @@ export function LiveView() {
   }
 
   return (
-    <div className="live">
+    <div className="live-board">
       <section className="col-left" aria-label="Startliste">
         <StartList parts={parts} riders={riders} />
       </section>
