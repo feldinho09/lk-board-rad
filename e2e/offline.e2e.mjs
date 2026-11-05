@@ -165,7 +165,20 @@ try {
   await live.goto(URL + '#live');
   await live.waitForSelector('.standings tbody tr');
   const corrected = await pasteRanking('0:14');
-  await live.waitForSelector('text=Neuer Stand verfügbar', { timeout: 10000 });
+  try {
+    await live.waitForSelector('text=Neuer Stand verfügbar', { timeout: 10000 });
+  } catch (e) {
+    const d = await live.evaluate(async () => ({
+      label: document.querySelector('.standing-label')?.textContent,
+      rows: [...document.querySelectorAll('.standings tbody tr')].map((r) => r.textContent).slice(0, 3),
+      revs: (await window.__lk.db.standings.toArray()).filter((s) => s.source.startsWith('PCS')).map((s) => s.sourceRevision),
+      sel: document.querySelector('[aria-label="Aktives Rennen"]')?.selectedOptions[0]?.textContent,
+      hash: location.hash,
+    }));
+    console.log('DIAG zweiter Tab:', JSON.stringify(d), '| Import:', corrected);
+    await live.screenshot({ path: `${screens}/fehler-tab2.png` });
+    throw e;
+  }
   const stillOld = await live.locator('.standings tbody tr').nth(2).textContent();
   await live.getByRole('button', { name: /Neuer Stand verfügbar/ }).click();
   const nowNew = await live.locator('.standings tbody tr').nth(2).textContent();
@@ -225,6 +238,114 @@ try {
     `Fokus ${liveFocus}, Feld „${liveVal}“, gewählt Nr. ${bibSel}, S→${sSel}, Feldmitte x=${box && Math.round(box.x + box.width / 2)} y=${box && Math.round(box.y)}`);
   await page.screenshot({ path: `${screens}/live-suche.png` });
   await page.keyboard.press('p'); // Anheften rückgängig
+
+  // Name so groß wie die Startnummer
+  const sizes = await page.evaluate(() => [getComputedStyle(document.querySelector('.card.primary .rider-name')).fontSize, getComputedStyle(document.querySelector('.card.primary .big-bib')).fontSize]);
+  check('Name', 'Fahrername in der Karte so groß wie die Startnummer', sizes[0] === sizes[1], sizes.join(' / '));
+
+  // Reiter Statistiken: tippen, automatisch speichern (ohne Feld zu verlassen), nach Neuladen vorhanden
+  await page.getByRole('tab', { name: 'Statistiken' }).click();
+  const statArea = page.getByRole('textbox', { name: 'Statistiken Ganzes Rennen' });
+  await statArea.click();
+  const statFocus = await page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
+  await page.keyboard.type('Vorjahressieger: ');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('Brändli');
+  await page.keyboard.press('Control+b');
+  await page.waitForSelector('text=✓ gespeichert', { timeout: 6000 });
+  const statDb1 = await page.evaluate(async () => (await window.__lk.db.notes.toArray()).filter((n) => n.kind === 'statistik').map((n) => `${n.stageId ? 'E' : 'R'}:${n.text}`));
+  await page.getByRole('tab', { name: 'Themen' }).click();
+  await page.getByRole('textbox', { name: 'Themen Etappe 4' }).click();
+  await page.keyboard.type('Duell am Schlussanstieg');
+  await page.waitForSelector('text=✓ gespeichert', { timeout: 6000 });
+  await page.screenshot({ path: `${screens}/themen.png` });
+  await page.reload();
+  await page.waitForSelector('.riders li');
+  await page.getByRole('tab', { name: 'Statistiken' }).click();
+  const statHtml = await page.getByRole('textbox', { name: 'Statistiken Ganzes Rennen' }).innerHTML();
+  const statDb2 = await page.evaluate(async () => (await window.__lk.db.notes.toArray()).filter((n) => n.kind === 'statistik').map((n) => `${n.stageId ? 'E' : 'R'}:${n.deleted ? 'DEL:' : ''}${n.text}`));
+  console.log('DIAG Statistik: Fokus', statFocus, '| DB nach Tippen', JSON.stringify(statDb1), '| DB nach Reload', JSON.stringify(statDb2), '| Editor', statHtml);
+  await page.getByRole('tab', { name: 'Themen' }).click();
+  const themaTxt = await page.getByRole('textbox', { name: 'Themen Etappe 4' }).textContent();
+  await page.keyboard.type('21'); await page.keyboard.press('Enter');
+  const backToCard = await page.waitForSelector('.card.primary', { timeout: 5000 }).then(() => 1).catch(() => 0);
+  check('Reiter', 'Statistiken/Themen: eigener Text automatisch gespeichert, fett erhalten; Fahrerwahl wechselt zur Karte',
+    /<b>Brändli<\/b>/.test(statHtml) && /Duell am Schlussanstieg/.test(themaTxt) && backToCard === 1, `${statHtml.slice(0, 60)} | ${themaTxt}`);
+
+  // Formatierung im Fahrerprofil: fett, kursiv, Markierung, Aufzählung, Einzug; Einfügen wird bereinigt
+  const brId = await page.evaluate(async () => (await window.__lk.db.riders.toArray()).find((r) => r.lastName === 'Brändli').id);
+  await page.goto(URL + '#fahrer-' + brId);
+  const bio = page.getByRole('textbox', { name: 'Kurzbiografie' });
+  await bio.click();
+  await page.keyboard.type('Zeitfahrer ');
+  await page.keyboard.press('Control+i'); await page.keyboard.type('aus Fiktivia'); await page.keyboard.press('Control+i');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Aufzählung' }).first().dispatchEvent('mousedown');
+  await page.keyboard.type('Punkt eins');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('eingerückt');
+  await page.keyboard.press('Shift+Home');
+  await page.getByRole('button', { name: 'Markieren Gelb' }).first().dispatchEvent('mousedown');
+  await page.keyboard.press('End');
+  await page.evaluate(() => {
+    const el = document.querySelector('[aria-label="Kurzbiografie"]');
+    const dt = new DataTransfer();
+    dt.setData('text/html', '<b>fett eingefügt</b><img src=x onerror="window.__xss=1"><script>window.__xss=2</script><a href="javascript:void(0)">Link</a>');
+    dt.setData('text/plain', 'fett eingefügt');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.waitForTimeout(300);
+  const bioSaved = await page.evaluate(async (id) => (await window.__lk.db.riders.get(id)).bio, brId);
+  const xss = await page.evaluate(() => window.__xss ?? null);
+  await page.screenshot({ path: `${screens}/formatierung.png` });
+  check('Format', 'Formatierung gespeichert (kursiv, Aufzählung, Einzug, Markierung); eingefügter Schadcode entfernt',
+    /<i>aus Fiktivia<\/i>/.test(bioSaved) && /<ul>/.test(bioSaved) && /<ul><li>eingerückt|<li>.*<ul>/.test(bioSaved) && /background-color:#fff1a8/.test(bioSaved) && /<b>fett eingefügt<\/b>/.test(bioSaved) && !/script|onerror|javascript|<img|<a /.test(bioSaved) && xss === null,
+    bioSaved);
+
+  // Wikipedia/Wikidata: simulierter Wikidata-Server mit CORS-Freigabe
+  await page.route('https://www.wikidata.org/w/api.php**', (route) => {
+    const p = new globalThis.URL(route.request().url()).searchParams;
+    const json = (o) => route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
+    if (p.get('action') === 'wbsearchentities') {
+      const s = p.get('search');
+      if (s === 'Mateo Ibáñez') return json({ search: [{ id: 'Q901', label: 'Mateo Ibáñez' }] });
+      if (s === 'Luca Bianchi') return json({ search: [{ id: 'Q902', label: 'Luca Bianchi' }, { id: 'Q903', label: 'Luca Bianchi' }] });
+      return json({ search: [] });
+    }
+    const t = (time, precision = 11) => ({ mainsnak: { datavalue: { value: { time, precision } } } });
+    const it = (id) => ({ mainsnak: { datavalue: { value: { id } } } });
+    const st = (v) => ({ mainsnak: { datavalue: { value: v } } });
+    const E = {
+      Q901: { descriptions: { de: { value: 'spanischer Radrennfahrer' } }, labels: { de: { value: 'Mateo Ibáñez' } }, claims: { P569: [t('+2003-02-14T00:00:00Z')], P1532: [it('Q29')] } },
+      Q902: { descriptions: { en: { value: 'Italian cyclist' } }, labels: { en: { value: 'Luca Bianchi' } }, claims: { P569: [t('+1997-03-01T00:00:00Z')], P27: [it('Q38')] } },
+      Q903: { descriptions: { en: { value: 'Italian racing cyclist' } }, labels: { en: { value: 'Luca Bianchi' } }, claims: { P569: [t('+2004-07-07T00:00:00Z')], P27: [it('Q38')] } },
+      Q29: { labels: { de: { value: 'Spanien' } }, claims: { P984: [st('ESP')] } },
+      Q38: { labels: { de: { value: 'Italien' } }, claims: { P984: [st('ITA')] } },
+    };
+    return json({ entities: Object.fromEntries(p.get('ids').split('|').map((id) => [id, E[id] ?? { missing: '' }])) });
+  });
+  await page.goto(URL + '#fahrer');
+  await page.getByRole('button', { name: /aus Wikipedia ergänzen/ }).click();
+  await page.getByText('Teilnehmer des aktiven Rennens').click();
+  await page.getByRole('button', { name: 'Suchen' }).click();
+  await page.waitForSelector('text=eindeutig ·', { timeout: 15000 });
+  const summary = await page.locator('.wikidata p').nth(1).textContent();
+  await page.screenshot({ path: `${screens}/wikidata.png`, fullPage: true });
+  await page.getByRole('button', { name: /übernehmen$/ }).click();
+  await page.waitForSelector('text=Fahrerprofile ergänzt');
+  const wd = await page.evaluate(async () => {
+    const rs = await window.__lk.db.riders.toArray();
+    const m = rs.find((r) => r.lastName === 'Ibáñez');
+    const bs = rs.filter((r) => r.lastName === 'Bianchi' && r.tags.includes('demo'));
+    return { mateo: [m.birthDate, m.nationality, JSON.stringify(m.externalIds), m.sources], bianchi: bs.map((b) => `${b.birthDate}:${b.externalIds.length}`).sort() };
+  });
+  check('Wikipedia', 'Wikidata-Abgleich: Jahrgang zu Datum ergänzt, Quelle+ID gespeichert; mehrdeutige Namensvettern nur mit Jahrgang zugeordnet',
+    wd.mateo[0] === '2003-02-14' && wd.mateo[1] === 'ESP' && /Q901/.test(wd.mateo[2]) && /Wikidata Q901/.test(wd.mateo[3]) && JSON.stringify(wd.bianchi) === '["1997-03-01:1","2004-07-07:1"]',
+    `${summary} | ${JSON.stringify(wd)}`);
+  await page.goto(URL + '#live');
+  await page.waitForSelector('.riders li');
   await page.keyboard.press('n');
   await page.keyboard.type('Attacke am Schlussanstieg');
   await page.keyboard.press('Enter');

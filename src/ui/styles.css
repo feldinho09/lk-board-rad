@@ -3,13 +3,13 @@
   --bg: #11161b; --panel: #192129; --panel2: #202a34; --line: #2d3946;
   --text: #e8edf2; --muted: #93a1b0; --accent: #f2c94c; --accent-ink: #1a1a1a;
   --ok: #4cc38a; --warn: #f2a33c; --err: #ff5d5d; --sel: #2c4a66; --live: #e5484d;
-  --fs: 15px; --fs-name: 1.9rem; --fs-bib: 2.4rem;
+  --fs: 15px; --fs-name: 2.4rem; --fs-bib: 2.4rem;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   color-scheme: dark;
 }
 [data-theme='hell'] { --bg: #f4f6f8; --panel: #fff; --panel2: #eef1f4; --line: #d3dae1; --text: #14191f; --muted: #5a6876; --sel: #d6e7f7; color-scheme: light; }
 [data-theme='kontrast'] { --bg: #000; --panel: #000; --panel2: #111; --line: #fff; --text: #fff; --muted: #ddd; --sel: #0040a0; --accent: #ffd400; }
-[data-font='gross'] { --fs: 18px; --fs-name: 2.3rem; --fs-bib: 2.9rem; }
+[data-font='gross'] { --fs: 18px; --fs-name: 2.9rem; --fs-bib: 2.9rem; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -91,8 +91,8 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4p
 .card-head { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
 .big-bib { font-size: var(--fs-bib); font-weight: 900; font-variant-numeric: tabular-nums; color: var(--accent); min-width: 2.2em; text-align: center; }
 .card:not(.primary) .big-bib { font-size: 1.5rem; }
-.rider-name { font-size: var(--fs-name); margin: 0; line-height: 1.1; }
-.card:not(.primary) .rider-name { font-size: 1.2rem; }
+.card .rider-name, .panel .rider-name { font-size: var(--fs-name); font-weight: 800; margin: 0; line-height: 1.05; overflow-wrap: anywhere; }
+.card:not(.primary) .rider-name, .panel .card:not(.primary) .rider-name { font-size: 1.5rem; }
 .team-line { color: var(--muted); }
 .card-actions { display: flex; flex-direction: column; gap: 4px; }
 .pron { margin: 8px 0 4px; font-size: 1.15em; }
@@ -184,3 +184,34 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4p
 .live-hits { position: absolute; left: 0; right: 0; top: 100%; margin: 4px 0 0; background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 6; max-height: 60vh; }
 .live-hits li { font-size: 1.1em; }
 .live-hits li.outside { opacity: .55; cursor: default; }
+/* Formatierter Text */
+.rt { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); width: 100%; }
+.rt.focused { border-color: var(--accent); }
+.rt-toolbar { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-bottom: 1px solid var(--line); background: var(--panel2); border-radius: 8px 8px 0 0; }
+.rt.compact .rt-toolbar { display: none; }
+.rt.compact.focused .rt-toolbar { display: flex; }
+.rt-btn { min-height: 26px; min-width: 28px; padding: 0 6px; font-size: .9em; line-height: 1; }
+.rt-color { width: 22px; min-width: 22px; border-radius: 4px; border: 1px solid var(--line); }
+.rt-nocolor { font-weight: 700; }
+.rt-sep { width: 1px; background: var(--line); margin: 2px 4px; }
+.rt-area { position: relative; min-height: 3.2em; padding: 6px 10px; outline: none; color: var(--text); font-size: 1rem; line-height: 1.45; cursor: text; }
+.rt.compact .rt-area { min-height: 1.8em; }
+.rt-area.empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; position: absolute; }
+.rt-area ul, .rt-view ul, .rt-area ol, .rt-view ol { margin: 2px 0; padding-left: 1.5em; }
+.rt-area blockquote, .rt-view blockquote { margin: 0 0 0 1.8em; padding: 0; border: none; }
+.rt-area span[style*="background-color"], .rt-view span[style*="background-color"] { color: #111; border-radius: 2px; padding: 0 1px; }
+.rt-view.plain { white-space: pre-wrap; }
+.rt-view > div { display: contents; }
+.form label .rt { color: var(--text); font-size: 1rem; }
+.rt-field { display: flex; flex-direction: column; gap: 2px; }
+.rt-label { font-size: .85em; color: var(--muted); }
+.notes li .rt { margin: 4px 0; }
+.detail-row { margin: 6px 0; } .detail-row .rt-view { margin-top: 2px; } .facts .rt-view > div { display: inline; }
+.mid-tabs { margin-bottom: 6px; }
+.mid-tabs button { font-size: .95em; padding: 4px 14px; min-height: 30px; }
+.topic-docs h2 { margin-bottom: 4px; }
+.topic-doc { margin: 8px 0 14px; }
+.topic-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.topic-head h3 { margin: 0 0 4px; font-size: 1rem; }
+.topic-doc .rt-area { min-height: 8em; font-size: 1.05rem; }
+.wikidata { margin: 10px 0; } tr.warnrow td { background: color-mix(in srgb, var(--warn) 12%, transparent); }

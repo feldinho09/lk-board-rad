@@ -11,6 +11,9 @@ import { useApp, isTyping } from './state';
 import { currentRaceClockSec } from './RaceClock';
 import { pcsDisplayName } from './PcsRankingPanel';
 import { LiveSearch } from './LiveSearch';
+import { RichView } from './RichText';
+import { TopicDocs } from './TopicDocs';
+import { isRich } from '../domain/richtext';
 
 export function bibSort(a: { bib: string }, b: { bib: string }): number {
   const na = Number(a.bib), nb = Number(b.bib);
@@ -56,7 +59,9 @@ export function LiveView() {
       </section>
       <section className="col-mid" aria-label="Fahrerkarte">
         <LiveSearch />
-        <RiderCards edition={edition} parts={parts} riders={riders} stage={stage} stages={sortedStages} standings={standings} />
+        <MidTabs edition={edition} stage={stage}>
+          <RiderCards edition={edition} parts={parts} riders={riders} stage={stage} stages={sortedStages} standings={standings} />
+        </MidTabs>
       </section>
       <section className="col-right" aria-label="Rennsituation">
         {stage && <StandingsPanel stage={stage} stages={sortedStages} standings={standings} riders={riders} />}
@@ -66,6 +71,25 @@ export function LiveView() {
         <EventsPanel editionId={edition.id} stageId={stage?.id} riders={riders} />
       </section>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- Reiter Mitte
+type MidTab = 'fahrer' | 'statistik' | 'thema';
+function MidTabs({ edition, stage, children }: { edition: Edition; stage: Stage | null; children: React.ReactNode }) {
+  const app = useApp();
+  const [tab, setTab] = useState<MidTab>('fahrer');
+  // Wer einen Fahrer wählt (Suche, Startliste, Rangliste), will die Fahrerkarte sehen
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } setTab('fahrer'); }, [app.selectedRiderId]);
+  const tabs: [MidTab, string][] = [['fahrer', 'Fahrer'], ['statistik', 'Statistiken'], ['thema', 'Themen']];
+  return (
+    <>
+      <div className="tabs mid-tabs" role="tablist" aria-label="Ansicht Mitte">
+        {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
+      </div>
+      {tab === 'fahrer' ? children : <TopicDocs key={tab} kind={tab} editionId={edition.id} stage={stage} />}
+    </>
   );
 }
 
@@ -225,7 +249,7 @@ function RiderCard({ edition, parts, riders, stage, stages, standings, riderId, 
       </div>
       {fix && p && <QuickFix rider={r} part={p} onDone={() => setFix(false)} />}
       <div className="role">{r.riderType ?? 'Fahrertyp unbekannt'}{p && p.status !== 'aktiv' && p.status !== 'gemeldet' && <span className="st"> · {START_STATUS_LABEL[p.status]}</span>}</div>
-      {facts.length > 0 ? <ol className="facts">{facts.map((f, i) => <li key={i}>{f}</li>)}</ol> : <p className="muted">Keine Schlüsselfakten hinterlegt.</p>}
+      {facts.length > 0 ? <ol className="facts">{facts.map((f, i) => <li key={i}><RichView value={f} inline={!isRich(f)} /></li>)}</ol> : <p className="muted">Keine Schlüsselfakten hinterlegt.</p>}
       {stage && (
         <dl className="results">
           <div><dt>{stage.label}</dt><dd>{stageRes?.row ? (stageRes.row.rank ? `${stageRes.row.rank}. ${formatGap(stageRes.row.gapSec)}` : stageRes.row.status ?? '–') : stageRes?.st.standing ? 'nicht klassiert' : 'kein Ergebnis'}</dd></div>
@@ -237,8 +261,8 @@ function RiderCard({ edition, parts, riders, stage, stages, standings, riderId, 
           <button className="link" onClick={() => setDetails((v) => !v)} aria-expanded={details}>{details ? 'Details ausblenden' : 'Details anzeigen'}</button>
           {details && (
             <div className="details">
-              {r.strengths && <p><span className="label">Stärken</span> {r.strengths}</p>}
-              {r.bio && <p><span className="label">Kurzbio</span> {r.bio}</p>}
+              {r.strengths && <div className="detail-row"><span className="label">Stärken</span> <RichView value={r.strengths} /></div>}
+              {r.bio && <div className="detail-row"><span className="label">Kurzbio</span> <RichView value={r.bio} /></div>}
               <NotesList notes={notes} editionId={edition.id} />
               <p className="muted small">Quellen: {r.sources ?? '–'} {r.lastVerifiedAt ? `· geprüft ${r.lastVerifiedAt}` : ''}</p>
               <a href={`#fahrer-${r.id}`}>Profil bearbeiten</a>
@@ -258,7 +282,7 @@ function NotesList({ notes, editionId }: { notes: Note[]; editionId: string }) {
         const told = n.toldInEditions.includes(editionId);
         return (
           <li key={n.id} className={told ? 'told' : ''}>
-            {n.text}
+            <RichView value={n.text} />
             <button className="link" onClick={() => mutate(['notes'], (w) => w.put('notes', { ...n, toldInEditions: told ? n.toldInEditions.filter((x) => x !== editionId) : [...n.toldInEditions, editionId] }))}>
               {told ? '✓ erzählt' : 'als erzählt markieren'}
             </button>

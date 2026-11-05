@@ -3,6 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, alive, mutate, newRecord } from '../db/db';
 import type { Note, Rider } from '../domain/types';
 import { normalize, riderSearchTokens } from '../domain/text';
+import { toPlain } from '../domain/richtext';
+import { RichText, RichView } from './RichText';
+import { WikidataPanel } from './WikidataPanel';
 import { useApp } from './state';
 import { confirmDialog } from './dialogs';
 
@@ -38,6 +41,7 @@ function RiderList() {
         <label><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Archivierte</label>
         <button onClick={create}>+ Fahrer</button>
       </div>
+      <WikidataPanel />
       <table className="table">
         <thead><tr><th>Name</th><th>Nation</th><th>Geburt</th><th>Typ</th><th>Aussprache</th></tr></thead>
         <tbody>
@@ -62,6 +66,8 @@ function RiderDetail({ id }: { id: string }) {
   const notes = useLiveQuery(() => db.notes.where('refId').equals(id).toArray().then(alive), [id]) ?? [];
   const [draft, setDraft] = useState<Rider | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [noteKey, setNoteKey] = useState(0);
+  const [editNote, setEditNote] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   useEffect(() => { if (rider && (!draft || draft.id !== rider.id)) setDraft(rider); }, [rider]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!rider || !draft) return <p>Fahrer nicht gefunden.</p>;
@@ -76,8 +82,9 @@ function RiderDetail({ id }: { id: string }) {
     setMsg('Lokal gespeichert. Bereits laufende und archivierte Rennen behalten ihre Teilnahmedaten (Team, Startnummer).');
   };
   const addNote = async () => {
-    if (!noteText.trim()) return;
-    await mutate(['notes'], (w) => w.put('notes', newRecord<F<Note>>({ scope: 'rider', refId: id, text: noteText.trim(), toldInEditions: [], priority: false, private: true }) as Note));
+    if (!toPlain(noteText).trim()) return;
+    await mutate(['notes'], (w) => w.put('notes', newRecord<F<Note>>({ scope: 'rider', refId: id, text: noteText, toldInEditions: [], priority: false, private: true }) as Note));
+    setNoteKey((k) => k + 1);
     setNoteText('');
   };
 
@@ -95,14 +102,21 @@ function RiderDetail({ id }: { id: string }) {
         <label>Nationalität <input value={draft.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value || undefined })} /></label>
         <label>Geburtsdatum oder -jahr <input value={draft.birthDate ?? ''} placeholder="JJJJ oder JJJJ-MM-TT – leer lassen, wenn unbekannt" onChange={(e) => set({ birthDate: e.target.value || undefined })} /></label>
         <label>Fahrertyp <input value={draft.riderType ?? ''} onChange={(e) => set({ riderType: e.target.value || undefined })} /></label>
-        <label>Stärken <input value={draft.strengths ?? ''} onChange={(e) => set({ strengths: e.target.value || undefined })} /></label>
         <label>Tags (Komma) <input value={draft.tags.join(', ')} onChange={(e) => set({ tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} /></label>
-        <label className="wide">Kurzbiografie <textarea rows={3} value={draft.bio ?? ''} onChange={(e) => set({ bio: e.target.value || undefined })} /></label>
-        {[0, 1, 2].map((i) => (
-          <label key={i} className="wide">Schlüsselfakt {i + 1}
-            <input value={draft.keyFacts[i] ?? ''} onChange={(e) => { const k = [...draft.keyFacts]; k[i] = e.target.value; set({ keyFacts: k }); }} />
-          </label>
-        ))}
+        <div className="wide rt-field"><span className="rt-label">Stärken</span>
+          <RichText label="Stärken" compact value={draft.strengths ?? ''} onInput={(h) => set({ strengths: h || undefined })} onChange={(h) => set({ strengths: h || undefined })} />
+        </div>
+        <div className="wide rt-field"><span className="rt-label">Kurzbiografie</span>
+          <RichText label="Kurzbiografie" value={draft.bio ?? ''} onInput={(h) => set({ bio: h || undefined })} onChange={(h) => set({ bio: h || undefined })} />
+        </div>
+        {[0, 1, 2].map((i) => {
+          const setFact = (h: string) => { const k = [...draft.keyFacts]; k[i] = h; set({ keyFacts: k }); };
+          return (
+            <div key={i} className="wide rt-field"><span className="rt-label">Schlüsselfakt {i + 1}</span>
+              <RichText label={`Schlüsselfakt ${i + 1}`} compact value={draft.keyFacts[i] ?? ''} onInput={setFact} onChange={setFact} />
+            </div>
+          );
+        })}
         <label>Quellen <input value={draft.sources ?? ''} onChange={(e) => set({ sources: e.target.value || undefined })} /></label>
         <label>Zuletzt geprüft <input type="date" value={draft.lastVerifiedAt ?? ''} onChange={(e) => set({ lastVerifiedAt: e.target.value || undefined })} /></label>
         <div className="wide muted small">Externe IDs: {rider.externalIds.length ? rider.externalIds.map((e) => `${e.ns}:${e.value}`).join(', ') : 'keine'}</div>
@@ -118,14 +132,18 @@ function RiderDetail({ id }: { id: string }) {
       <ul className="notes">
         {notes.map((n) => (
           <li key={n.id}>
-            {n.text}{n.private && <span className="tag">privat</span>}
+            {editNote === n.id
+              ? <RichText label="Notiz bearbeiten" autoFocus value={n.text} onChange={(h) => { setEditNote(null); if (h && h !== n.text) void mutate(['notes'], (w) => w.put('notes', { ...n, text: h })); }} />
+              : <RichView value={n.text} />}
+            {n.private && <span className="tag">privat</span>}
+            {editNote !== n.id && <button className="link" onClick={() => setEditNote(n.id)}>bearbeiten</button>}
             <button className="link" onClick={() => mutate(['notes'], (w) => w.put('notes', { ...n, priority: !n.priority }))}>{n.priority ? '★ Schlüsselfakt' : 'als Schlüsselfakt'}</button>
             <button className="link" onClick={async () => { if (await confirmDialog('Notiz löschen?', 'Löschen')) await mutate(['notes'], (w) => w.remove('notes', n.id)); }}>löschen</button>
           </li>
         ))}
       </ul>
       <div className="row">
-        <input value={noteText} onChange={(e) => setNoteText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addNote()} placeholder="Hintergrundnotiz" aria-label="Neue Notiz" />
+        <div style={{ flex: 1 }}><RichText key={noteKey} label="Neue Notiz" placeholder="Hintergrundnotiz – mit Formatierung" value="" onInput={setNoteText} onChange={setNoteText} /></div>
         <button onClick={addNote}>Notiz hinzufügen</button>
       </div>
 

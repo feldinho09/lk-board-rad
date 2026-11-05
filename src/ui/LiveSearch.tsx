@@ -43,7 +43,7 @@ export function LiveSearch() {
   const done = () => { setQ(''); setHits([]); setOpen(false); input.current?.blur(); };
   const choose = (h: SearchHit) => {
     if (h.participation) { app.select(h.rider.id); done(); }
-    else if (app.mode !== 'live') { location.hash = `#fahrer/${h.rider.id}`; done(); }
+    else if (app.mode !== 'live') { location.hash = `#fahrer-${h.rider.id}`; done(); }
   };
 
   return (
@@ -53,7 +53,8 @@ export function LiveSearch() {
         value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        // Verzögert schließen (Klick auf Treffer), aber nicht, wenn das Feld inzwischen wieder fokussiert ist
+        onBlur={() => setTimeout(() => { if (document.activeElement !== input.current) setOpen(false); }, 150)}
         placeholder="Startnummer oder Name – einfach tippen (Ziffer, S oder /)"
         aria-label="Fahrer suchen"
         autoComplete="off"

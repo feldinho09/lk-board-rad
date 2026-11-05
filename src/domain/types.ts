@@ -183,6 +183,9 @@ export interface Note extends Versioned {
   toldInEditions: ID[];
   priority: boolean;
   private: boolean;
+  /** Eigene Sammlungen im Live-Board: Statistiken bzw. Themen (Rennen gesamt oder je Etappe) */
+  kind?: 'statistik' | 'thema';
+  stageId?: ID;
 }
 
 export interface RaceEvent extends Versioned {

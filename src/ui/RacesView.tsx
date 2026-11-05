@@ -6,6 +6,7 @@ import { START_STATUS_LABEL } from '../domain/types';
 import { seedDemo } from '../demo/demo';
 import { useApp } from './state';
 import { bibSort } from './LiveView';
+import { RichText } from './RichText';
 import { confirmDialog } from './dialogs';
 
 type F<T> = Omit<T, 'id' | 'rev' | 'createdAt' | 'updatedAt'>;
@@ -125,7 +126,9 @@ function RaceDetail({ id }: { id: string }) {
     <div className="page">
       <p><a href="#rennen">← Rennen</a></p>
       <h1>{edition.name} {edition.dataOrigin === 'demo' && <span className="tag">DEMO</span>}</h1>
-      {edition.notes && <p className="muted">{edition.notes}</p>}
+      <div className="rt-field" style={{ maxWidth: 900 }}><span className="rt-label">Notizen zum Rennen</span>
+        <RichText label="Notizen zum Rennen" placeholder="Hintergrund, Besonderheiten, Strecke …" value={edition.notes ?? ''} onChange={(h) => saveEdition({ notes: h || undefined })} />
+      </div>
       <fieldset className="form" disabled={live}>
         <legend>Stammdaten{live && ' (im Live-Modus gesperrt)'}</legend>
         <label>Name <input defaultValue={edition.name} onBlur={(e) => e.target.value.trim() && e.target.value !== edition.name && saveEdition({ name: e.target.value.trim() })} /></label>

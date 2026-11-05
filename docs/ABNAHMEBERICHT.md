@@ -79,6 +79,18 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 | Ausfälle (DNF/DNS/OTL) optional in Teilnehmerstatus übernehmen | ✅ | e2e |
 | Fahrer ohne Profil im Rennen | ✅ | bleiben mit PCS-Namen in der Liste, markiert ⚠, keine Fehlzuordnung |
 
+## Ergänzung 0.1.3 – Formatierung, Statistiken/Themen, Wikipedia, Live-Suche
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| Formatierung (fett, kursiv, unterstrichen, Markierung in 4 Farben, Aufzählung, Nummerierung, Einzug) in Kurzbio, Stärken, Schlüsselfakten, Notizen, Rennnotizen, Statistiken, Themen | ✅ | e2e (Tastatur + Werkzeugleiste) |
+| Eingefügter fremder Inhalt wird bereinigt (Skripte, Bilder, Links, Ereignis-Attribute) | ✅ | Unit-Tests + e2e mit präpariertem Einfügen: kein Code ausgeführt |
+| Bisheriger Klartext bleibt gültig; Klartext für Suche/Notfallübersicht | ✅ | Unit-Tests |
+| Reiter „Statistiken“ und „Themen“ (Rennen gesamt + je Etappe), automatisches Speichern beim Tippen | ✅ | e2e inkl. Neuladen; Datenbankinhalt vor/nach Neuladen identisch |
+| Fahrername so groß wie Startnummer | ✅ | e2e (berechnete Schriftgröße gleich) |
+| Land/Geburtsdatum aus Wikipedia (Wikidata) mit Vorschau, nur Bestätigtes, nur leere Felder (optional überschreiben), Quelle + ID gespeichert, Wiederherstellungspunkt vorher | 🟡 | Unit-Tests + e2e gegen **simulierten** Wikidata-Server. Gegen das echte Wikidata nicht getestet, weil die Testumgebung keinen Internetzugang zu Wikimedia hat – erster echter Lauf beim Nutzer |
+| Live-Suche: Ziffern/S ohne Klick | ✅ | e2e; dabei Wettlauf beim schnellen Wiederöffnen gefunden und behoben |
+
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 
 1. Konfigurierbares Board (Blöcke, Vorlagen) mit Entwurf → Vorschau → Freigabe.

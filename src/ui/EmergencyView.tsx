@@ -3,6 +3,7 @@ import { db, alive } from '../db/db';
 import type { Rider } from '../domain/types';
 import { useApp } from './state';
 import { bibSort } from './LiveView';
+import { toPlain } from '../domain/richtext';
 import { useRef, useState } from 'react';
 import { IS_ARTIFACT, saveFile } from './host';
 
@@ -42,7 +43,7 @@ export function EmergencyView() {
                 <td>{p.overrides.displayName ?? r?.displayName}{p.status !== 'aktiv' && p.status !== 'gemeldet' ? ` (${p.status})` : ''}</td>
                 <td>{p.teamName}</td>
                 <td>{p.overrides.pronunciation ?? r?.pronunciation ?? ''}</td>
-                <td>{r?.keyFacts.slice(0, 3).join(' · ')}</td>
+                <td>{r?.keyFacts.slice(0, 3).map(toPlain).join(' · ')}</td>
               </tr>
             );
           })}
