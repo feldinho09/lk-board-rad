@@ -93,6 +93,10 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 | Statistiken/Themen im Live-Modus nur lesen (kompakt, große Schrift, Etappe zuerst, leere Bereiche ausgeblendet) | ✅ | e2e: kein Eingabefeld, keine Werkzeugleiste; im Bearbeitungsmodus wieder editierbar |
 | Live-Knopf überdeckte im Live-Modus die Kopfzeile (Namenskonflikt der Stilklasse „live“) | ✅ | behoben, e2e prüft Knopfgröße |
 | Editor zeigte nach dem Laden kurz ein leeres Feld | ✅ | behoben (Inhalt vor dem ersten Zeichnen gesetzt); 4 von 4 Läufen fehlerfrei |
+| PDF-Export mit wählbaren Inhalten (Fahrerauswahl, Startliste, Fahrerkarten mit Einzelfeldern, Statistiken, Themen, Rennnotizen, Wertungen Top N, Renngruppen, Ereignisse; Layout hoch/quer, Schrift, Spalten) | ✅ | Unit-Tests (echtes PDF erzeugt und zurückgelesen) + e2e **offline** mit Download und Prüfung des Inhalts |
+| Formatierung im PDF (fett, kursiv, unterstrichen, Markierung, Aufzählung, Einzug), Sonderzeichen | ✅ | Unit-Test + Sichtprüfung der gerenderten Seite |
+| Private Notizen nur bei ausdrücklicher Wahl; Fußzeile warnt dann rot | ✅ | Unit-Test |
+| PDF-Vorschau im Browser | 🟡 | Funktioniert technisch (keine Sicherheitsfehler); im Testbrowser ohne PDF-Anzeige nicht sichtbar prüfbar |
 
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 

@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const PORT = 4173;
 const URL = `http://localhost:${PORT}/?testhooks`;
@@ -488,6 +489,30 @@ try {
     return { n: ps.length, b007: ps.find((p) => p.bib === '007')?.teamName, b1: ps.find((p) => p.bib === '1')?.teamName, b41: ps.find((p) => p.bib === '41')?.teamName };
   });
   check('PDF', 'PDF-Startliste offline importiert; Korrektur aus der Prüftabelle übernommen', pdfRes.n >= 16 && pdfRes.b007 === 'ZERO ONE' && pdfRes.b1 === 'ALPENFIRN RACING TEAM' && pdfRes.b41 === 'TEAM KAIZEN', JSON.stringify(pdfRes));
+
+  // PDF-Export OFFLINE: Auswahl, Datei herunterladen, Inhalt mit pdf.js prüfen
+  const cspErrors = [];
+  page.on('console', (m) => { if (/Content Security Policy|Refused to/.test(m.text())) cspErrors.push(m.text()); });
+  await page.goto(URL + '#export');
+  await page.locator('fieldset select').first().selectOption({ label: 'DEMO – Rundfahrt Fiktivia 2026' });
+  await page.getByText('Nur Favoriten').click();
+  const shownStage = await page.locator('fieldset select').nth(1).evaluate((el) => el.selectedOptions[0].textContent);
+  await page.getByText('Gesamtwertung', { exact: true }).click();
+  await page.getByText('Kurzbiografie').click();
+  const [pdfDl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.getByRole('button', { name: 'PDF speichern' }).click()]);
+  const pdfPath = join(userDataDir, '..', 'lk-export.pdf');
+  await pdfDl.saveAs(pdfPath);
+  const { getDocument } = await import(pathToFileURL(createRequire(import.meta.url).resolve('pdfjs-dist/legacy/build/pdf.mjs', { paths: [process.cwd()] })).href);
+  const pdfDoc = await getDocument({ data: new Uint8Array(readFileSync(pdfPath)), verbosity: 0 }).promise;
+  let pdfTxt = '';
+  for (let pg = 1; pg <= pdfDoc.numPages; pg++) pdfTxt += ' ' + (await (await pdfDoc.getPage(pg)).getTextContent()).items.map((i) => i.str).join(' ');
+  await page.getByRole('button', { name: 'Vorschau' }).click();
+  await page.waitForSelector('iframe.pdf-preview', { timeout: 20000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: `${screens}/pdf-export.png`, fullPage: true });
+  check('PDF', 'PDF-Export offline: Auswahl wirkt (Favoriten, Kurzbio, Gesamtwertung), Datei lesbar, Vorschau ohne Sicherheitsfehler',
+    pdfDl.suggestedFilename().endsWith('.pdf') && /DEMO – Rundfahrt Fiktivia 2026/.test(pdfTxt) && /Jonas Brändli/.test(pdfTxt) && /Zeitfahrer/.test(pdfTxt) && /Gesamtwertung nach/.test(pdfTxt) && /Startliste \(3\)/.test(pdfTxt) && shownStage === 'Etappe 4' && /Etappe 4 · 2026/.test(pdfTxt) && cspErrors.length === 0,
+    `${pdfDl.suggestedFilename()} · angezeigt ${shownStage} · ${pdfDoc.numPages} Seite(n) · CSP-Fehler ${cspErrors.length}${cspErrors[0] ? ': ' + cspErrors[0].slice(0, 80) : ''}`);
 
   // Restore in leerem, mit App-Code vorbereitetem Browserbestand (Nr. 13)
   await page.evaluate(async () => {

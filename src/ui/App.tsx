@@ -13,6 +13,7 @@ import { RidersView } from './RidersView';
 import { ImportView } from './ImportView';
 import { BackupView } from './BackupView';
 import { CheckView } from './CheckView';
+import { ExportView } from './ExportView';
 import { EmergencyView } from './EmergencyView';
 import { createRestorePoint } from '../backup/archive';
 import { DialogHost, confirmDialog } from './dialogs';
@@ -32,6 +33,7 @@ const NAV: [string, string][] = [
   ['fahrer', 'Fahrer'],
   ['import', 'Import'],
   ['sicherung', 'Sicherung'],
+  ['export', 'PDF'],
   ['check', 'Bereitschaft'],
 ];
 
@@ -92,6 +94,7 @@ function Shell() {
         {page === 'import' && <ImportView />}
         {page === 'sicherung' && <BackupView />}
         {page === 'check' && <CheckView />}
+        {page === 'export' && <ExportView />}
       </main>
       {searchOpen !== false && <SearchDialog initial={searchOpen} onClose={() => setSearchOpen(false)} />}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
@@ -167,7 +170,7 @@ function Header({ page, go, onSearch, onHelp }: { page: string; go: (p: string) 
           ))}
         </nav>
       )}
-      {live && <nav className="nav"><a href="#live" className="active">Live</a><a href="#check">Bereitschaft</a></nav>}
+      {live && <nav className="nav"><a href="#live" className={page === 'live' ? 'active' : ''}>Live</a><a href="#export" className={page === 'export' ? 'active' : ''}>PDF</a><a href="#check" className={page === 'check' ? 'active' : ''}>Bereitschaft</a></nav>}
       <div className="status">
         <SaveIndicator />
         <span className="badge" title="Lokale Änderungen, die noch nicht mit einem Server abgeglichen wurden. Kein Server konfiguriert = normaler rein lokaler Betrieb.">
