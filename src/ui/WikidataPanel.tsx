@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, alive, mutate } from '../db/db';
 import type { Rider } from '../domain/types';
-import { lookupRiders, applyLookup, type Candidate, type LookupResult } from '../import/wikidata';
+import { lookupRiders, applyLookup, lookupChanged, type Candidate, type LookupResult } from '../import/wikidata';
 import { createRestorePoint } from '../backup/archive';
 import { IS_ARTIFACT } from './host';
 import { useApp } from './state';
@@ -21,15 +21,19 @@ export function WikidataPanel() {
   const [results, setResults] = useState<LookupResult[] | null>(null);
   const [choice, setChoice] = useState<Record<string, string>>({}); // riderId -> qid | ''
   const [overwrite, setOverwrite] = useState(false);
+  const [bio, setBio] = useState(true);
+  const [physical, setPhysical] = useState(true);
+  const extras = bio || physical;
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const abort = useRef<AbortController | null>(null);
 
   const scoped = useMemo(() => {
-    if (scope === 'fehlend') return riders.filter((r) => !r.nationality || !r.birthDate || r.birthDate.length === 4);
+    if (scope === 'fehlend') return riders.filter((r) => !r.nationality || !r.birthDate || r.birthDate.length === 4
+      || (bio && !(r.bio ?? '').replace(/<[^>]*>|&nbsp;/g, '').trim()) || (physical && (!r.heightCm || !r.weightKg || !r.residence)));
     if (scope === 'rennen') return riders.filter((r) => raceRiderIds.has(r.id));
     return riders;
-  }, [riders, scope, raceRiderIds]);
+  }, [riders, scope, raceRiderIds, bio, physical]);
 
   const start = async () => {
     setErr(''); setMsg(''); setResults(null);
@@ -38,7 +42,7 @@ export function WikidataPanel() {
     abort.current = new AbortController();
     setProgress([0, scoped.length * 2]);
     try {
-      const res = await lookupRiders(scoped, { signal: abort.current.signal, onProgress: (d, t) => setProgress([d, t]) });
+      const res = await lookupRiders(scoped, { signal: abort.current.signal, extras, onProgress: (d, t) => setProgress([d, t]) });
       setResults(res);
       setChoice(Object.fromEntries(res.map((r) => [r.riderId, r.status === 'sicher' && r.conflicts.length === 0 ? r.chosen!.qid : ''])));
     } catch (e) {
@@ -56,8 +60,8 @@ export function WikidataPanel() {
       const cand = res.candidates.find((c) => c.qid === qid);
       const r = byId.get(res.riderId);
       if (!cand || !r) continue;
-      const next = applyLookup(r, cand, overwrite);
-      if (next.birthDate !== r.birthDate || next.nationality !== r.nationality || next.externalIds.length !== r.externalIds.length || next.sources !== r.sources) updates.push(next);
+      const next = applyLookup(r, cand, overwrite, undefined, { bio, physical });
+      if (lookupChanged(r, next)) updates.push(next);
     }
     if (!updates.length) return setMsg('Nichts zu übernehmen.');
     await createRestorePoint(`Vor Wikidata-Ergänzung (${updates.length} Fahrer)`);
@@ -69,7 +73,7 @@ export function WikidataPanel() {
   if (!open) {
     return (
       <div className="row">
-        <button onClick={() => setOpen(true)} disabled={IS_ARTIFACT} title={IS_ARTIFACT ? 'In der Claude-Artefakt-Fassung nicht möglich' : ''}>Land &amp; Geburtsdatum aus Wikipedia ergänzen …</button>
+        <button onClick={() => setOpen(true)} disabled={IS_ARTIFACT} title={IS_ARTIFACT ? 'In der Claude-Artefakt-Fassung nicht möglich' : ''}>Infos aus Wikipedia ergänzen …</button>
       </div>
     );
   }
@@ -78,10 +82,16 @@ export function WikidataPanel() {
 
   return (
     <section className="panel wikidata">
-      <div className="panel-head"><h2>Land &amp; Geburtsdatum aus Wikipedia (Wikidata)</h2><button className="link" onClick={() => { abort.current?.abort(); setOpen(false); }}>schließen</button></div>
-      <p className="small muted">Abgefragt wird Wikidata, die Datenbank hinter den Wikipedia-Infoboxen. Übernommen wird nur, was du bestätigst. Land = Sportnation im Radsport-/IOC-Kürzel (z. B. SUI, GER, SLO). Datum nur so genau, wie Wikidata es kennt.</p>
+      <div className="panel-head"><h2>Infos aus Wikipedia (Wikidata)</h2><button className="link" onClick={() => { abort.current?.abort(); setOpen(false); }}>schließen</button></div>
+      <p className="small muted">Abgefragt wird Wikidata, die Datenbank hinter den Wikipedia-Infoboxen. Übernommen wird nur, was du bestätigst. Land = Sportnation im Radsport-/IOC-Kürzel (z. B. SUI, GER, SLO). Datum nur so genau, wie Wikidata es kennt. Kurzbio = Einleitung des deutschen (sonst englischen) Wikipedia-Artikels, nur in leere Felder; Lizenz CC BY-SA, Quelle wird im Profil vermerkt.</p>
       <div className="row">
-        <label><input type="radio" checked={scope === 'fehlend'} onChange={() => setScope('fehlend')} /> Fahrer ohne Land oder vollständiges Geburtsdatum</label>
+        <span>Holen:</span>
+        <label className="confirm"><input type="checkbox" checked disabled /> Land, Geburtsdatum</label>
+        <label className="confirm"><input type="checkbox" checked={bio} onChange={(e) => { setBio(e.target.checked); setResults(null); }} /> Kurzbio</label>
+        <label className="confirm"><input type="checkbox" checked={physical} onChange={(e) => { setPhysical(e.target.checked); setResults(null); }} /> Grösse, Gewicht, Wohnort</label>
+      </div>
+      <div className="row">
+        <label><input type="radio" checked={scope === 'fehlend'} onChange={() => setScope('fehlend')} /> Fahrer, bei denen etwas davon fehlt</label>
         <label><input type="radio" checked={scope === 'rennen'} onChange={() => setScope('rennen')} disabled={!app.editionId} /> Teilnehmer des aktiven Rennens</label>
         <label><input type="radio" checked={scope === 'alle'} onChange={() => setScope('alle')} /> Alle Fahrer</label>
         <strong>{scoped.length} Fahrer</strong>
@@ -95,7 +105,7 @@ export function WikidataPanel() {
           <p>{counts?.sicher ?? 0} eindeutig · {counts?.mehrdeutig ?? 0} zu prüfen · {counts?.nicht_gefunden ?? 0} nicht gefunden</p>
           <div className="scroll-x" style={{ maxHeight: '55vh' }}>
             <table className="table compact">
-              <thead><tr><th>Fahrer</th><th>Wikidata-Eintrag</th><th>Land</th><th>Geburtsdatum</th><th>Status</th></tr></thead>
+              <thead><tr><th>Fahrer</th><th>Wikidata-Eintrag</th><th>Land</th><th>Geburtsdatum</th>{physical && <th>Grösse · Gewicht · Wohnort</th>}{bio && <th>Kurzbio</th>}<th>Status</th></tr></thead>
               <tbody>
                 {results.map((res) => {
                   const r = riders.find((x) => x.id === res.riderId);
@@ -114,6 +124,8 @@ export function WikidataPanel() {
                       </td>
                       <td>{diff(r?.nationality, cand?.nationality, res.conflicts.includes('nationality'))}{cand && !cand.nationality && cand.nationalityAll.length > 1 && <span className="small muted"> (mehrere: {cand.nationalityAll.join(', ')})</span>}</td>
                       <td>{diff(r?.birthDate, cand?.birthDate, res.conflicts.includes('birthDate'))}</td>
+                      {physical && <td className="small">{[cand?.heightCm ? `${cand.heightCm} cm` : '', cand?.weightKg ? `${cand.weightKg} kg` : '', cand?.residence ?? ''].filter(Boolean).join(' · ') || <span className="muted">–</span>}</td>}
+                      {bio && <td className="small" title={cand?.intro}>{cand?.intro ? (r?.bio ? <span className="muted">vorhanden – bleibt</span> : `${cand.intro.slice(0, 70)}…`) : <span className="muted">–</span>}</td>}
                       <td className="small">{STATUS_TXT[res.status]}{res.message ? ` – ${res.message}` : ''}{res.conflicts.length ? ' – weicht von vorhandener Angabe ab' : ''}</td>
                     </tr>
                   );

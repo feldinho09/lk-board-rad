@@ -15,7 +15,7 @@ export interface ExportOptions {
   riderScope: 'alle' | 'favoriten' | 'angeheftet' | 'aktiv';
   startlist: boolean;
   cards: boolean;
-  card: { pronunciation: boolean; type: boolean; natAge: boolean; facts: boolean; strengths: boolean; bio: boolean; notes: boolean; privateNotes: boolean; results: boolean };
+  card: { pronunciation: boolean; type: boolean; natAge: boolean; facts: boolean; strengths: boolean; bio: boolean; person: boolean; palmares: boolean; notes: boolean; privateNotes: boolean; results: boolean };
   standings: ClassificationKind[];
   standingsTop: number; // 0 = alle
   statistik: boolean;
@@ -32,7 +32,7 @@ export const DEFAULT_EXPORT: ExportOptions = {
   riderScope: 'alle',
   startlist: true,
   cards: true,
-  card: { pronunciation: true, type: true, natAge: true, facts: true, strengths: false, bio: false, notes: false, privateNotes: false, results: true },
+  card: { pronunciation: true, type: true, natAge: true, facts: true, strengths: false, bio: false, person: false, palmares: false, notes: false, privateNotes: false, results: true },
   standings: [],
   standingsTop: 10,
   statistik: true,
@@ -268,6 +268,15 @@ function riderCard(d: ExportData, o: ExportOptions, p: Participation, blocks: (v
   }
   if (c.strengths && r?.strengths) stack.push({ text: 'STÄRKEN', style: 'label', margin: [0, 3, 0, 0] }, ...blocks(r.strengths));
   if (c.bio && r?.bio) stack.push({ text: 'KURZBIO', style: 'label', margin: [0, 3, 0, 0] }, ...blocks(r.bio));
+  if (c.person && r) {
+    const per = [r.birthPlace ? `geb. in ${r.birthPlace}` : '', r.heightCm ? `${r.heightCm} cm` : '', r.weightKg ? `${r.weightKg} kg` : '', r.residence ? `wohnt in ${r.residence}` : ''].filter(Boolean).join(' · ');
+    if (per) stack.push({ text: [{ text: 'PERSON  ', style: 'label' }, per] });
+  }
+  if (c.palmares && r?.palmares?.length) {
+    const wins = r.palmares.filter((e) => e.rank === 1 && (!e.detail || /general|^stage/i.test(e.detail)));
+    const top = wins.slice(0, 8).map((e) => `${e.year} ${e.race}${e.detail ? ` (${e.detail.replace(/^General classification$/i, 'Gesamt').replace(/^Stages?\s+/i, 'Etappe ')})` : ''}`);
+    if (top.length) stack.push({ text: 'ERFOLGE (SIEGE)', style: 'label', margin: [0, 3, 0, 0] }, { ul: top, fontSize: 8.5 });
+  }
   if (c.notes) {
     const visible = notes.filter((n) => !n.private || c.privateNotes);
     if (visible.length) {

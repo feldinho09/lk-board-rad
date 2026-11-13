@@ -14,10 +14,12 @@ import { nameKey, normalize, riderSearchTokens } from '../domain/text';
 import { createRestorePoint } from '../backup/archive';
 import { resolveRanking, saveRanking, type SaveRankingResult } from './pcsRankingCommit';
 import {
-  fetchStageRankings, getAthlete, getTeams, listStages, splitTissotName, stageFromTissot, statusesFromTeams, tissotDate,
+  fetchStageRankings, getAthlete, getPalmares, getTeams, listStages, splitTissotName, stageFromTissot, statusesFromTeams, tissotDate,
   tissotFetcher, TISSOT_SOURCE, type JsonFetcher, type TtCompetition, type TtStage,
 } from './tissot';
 import { capitalizeNamePart } from './matching';
+import { keyFactsFromPalmares } from '../domain/palmares';
+import type { PalmaresEntry } from '../domain/types';
 
 type F<T> = Omit<T, keyof Versioned>;
 
@@ -101,7 +103,7 @@ export const loadTissotStages = (tissotId: string, f: JsonFetcher = tissotFetche
 
 // ---------------------------------------------------------------- Fahrerdaten
 
-export interface EnrichOptions { birthDates: boolean; places: boolean; accents: boolean; nationality: boolean }
+export interface EnrichOptions { birthDates: boolean; places: boolean; accents: boolean; nationality: boolean; palmares?: boolean; keyFacts?: boolean }
 export interface EnrichResult { checked: number; updated: number; withoutUci: number; uciAdded: number; failed: string[] }
 
 const sameName = (a: string, b: string) => normalize(a) === normalize(b);
@@ -128,6 +130,14 @@ export function applyAthlete(r: Rider, a: { firstName?: string; lastName?: strin
   const src = `Tissot Timing (abgerufen ${today})`;
   next.sources = r.sources ? (/Tissot Timing \(abgerufen [\d-]+\)/.test(r.sources) ? r.sources.replace(/Tissot Timing \(abgerufen [\d-]+\)/, src) : `${r.sources}; ${src}`) : src;
   return next;
+}
+
+/** Palmarès ersetzen (Quelle Tissot); Schlüsselfakten nur vorschlagen, wenn noch keine erfasst sind. */
+export function applyPalmares(r: Rider, p: PalmaresEntry[], keyFacts: boolean, today = new Date().toISOString().slice(0, 10)): Rider {
+  const same = JSON.stringify(r.palmares ?? []) === JSON.stringify(p);
+  const facts = keyFacts && !r.keyFacts.some((f) => f.trim()) ? keyFactsFromPalmares(p) : r.keyFacts;
+  if (same && facts === r.keyFacts) return r;
+  return { ...r, palmares: p, palmaresSource: `Tissot Timing (abgerufen ${today})`, keyFacts: facts };
 }
 
 export async function enrichRidersFromTissot(
@@ -160,6 +170,17 @@ export async function enrichRidersFromTissot(
       riders = riders.map((r) => map.get(r.id) ?? r);
     }
   }
+  const r = await enrichRidersByUci(riders, tissotId, o, onProgress, f);
+  return { ...r, uciAdded };
+}
+
+/**
+ * Fahrer mit UCI-ID bei Tissot nachschlagen. Ohne Wettbewerbs-Kennung (tissotId = null)
+ * gibt es nur das Palmarès – die Fahrer-Infos verlangt Tissot im Kontext eines Rennens.
+ */
+export async function enrichRidersByUci(
+  riders: Rider[], tissotId: string | null, o: EnrichOptions, onProgress: (done: number, total: number) => void = () => {}, f: JsonFetcher = tissotFetcher,
+): Promise<Omit<EnrichResult, 'uciAdded'>> {
   const withUci = riders.filter((r) => r.externalIds.some((e) => e.ns === 'uci' && e.value));
   const updates: Rider[] = [];
   const failed: string[] = [];
@@ -167,11 +188,17 @@ export async function enrichRidersFromTissot(
   for (const r of withUci) {
     const uci = r.externalIds.find((e) => e.ns === 'uci')!.value;
     try {
-      const a = await getAthlete(uci, tissotId, f);
-      if (a) {
-        const next = applyAthlete(r, a, o);
-        if (next !== r) updates.push(next);
-      } else failed.push(`${r.displayName} (nicht gefunden)`);
+      let next = r;
+      if (o.birthDates || o.places || o.accents || o.nationality) {
+        const a = tissotId ? await getAthlete(uci, tissotId, f) : null;
+        if (a) next = applyAthlete(next, a, o);
+        else if (tissotId) failed.push(`${r.displayName} (nicht gefunden)`);
+      }
+      if (o.palmares) {
+        const p = await getPalmares(uci, f);
+        if (p) next = applyPalmares(next, p, !!o.keyFacts);
+      }
+      if (next !== r) updates.push(next);
     } catch (e) {
       failed.push(`${r.displayName} (${e instanceof Error ? e.message : String(e)})`);
       if (failed.length >= 5 && done < 5) break; // Quelle offensichtlich nicht erreichbar
@@ -182,6 +209,6 @@ export async function enrichRidersFromTissot(
     await createRestorePoint(`Vor Tissot-Ergänzung (${updates.length} Fahrer)`);
     await mutate(['riders'], async (w) => { for (const u of updates) await w.put('riders', u); });
   }
-  return { checked: done, updated: updates.length, withoutUci: riders.length - withUci.length, uciAdded, failed };
+  return { checked: done, updated: updates.length, withoutUci: riders.length - withUci.length, failed };
 }
 

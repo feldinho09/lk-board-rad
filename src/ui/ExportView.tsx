@@ -10,7 +10,7 @@ import { useApp } from './state';
 const KINDS: ClassificationKind[] = ['etappe', 'gc', 'punkte', 'berg', 'nachwuchs', 'team'];
 const CARD_FIELDS: [keyof ExportOptions['card'], string][] = [
   ['pronunciation', 'Aussprache'], ['natAge', 'Nation & Alter'], ['type', 'Fahrertyp'], ['results', 'Etappen- & Gesamtplatz'],
-  ['facts', 'Schlüsselfakten (max. 3)'], ['strengths', 'Stärken'], ['bio', 'Kurzbiografie'], ['notes', 'Notizen'],
+  ['facts', 'Schlüsselfakten (max. 3)'], ['strengths', 'Stärken'], ['bio', 'Kurzbiografie'], ['person', 'Geburtsort, Grösse, Gewicht, Wohnort'], ['palmares', 'Erfolge (letzte Siege)'], ['notes', 'Notizen'],
 ];
 
 /** PDF-Export mit frei wählbaren Inhalten. Die Auswahl wird auf diesem Gerät gemerkt. */
@@ -103,7 +103,7 @@ export function ExportView() {
             {cb(o.cards, (v) => set({ cards: v }), 'Fahrerkarten')}
             {o.cards && (
               <div className="sub">
-                {CARD_FIELDS.map(([k, l]) => <span key={k}>{cb(o.card[k], (v) => setCard(k, v), l)}</span>)}
+                {CARD_FIELDS.map(([k, l]) => <span key={k}>{cb(!!o.card[k], (v) => setCard(k, v), l)}</span>)}
                 {o.card.notes && cb(o.card.privateNotes, (v) => setCard('privateNotes', v), 'auch private Notizen', o.card.privateNotes ? <span className="warn small"> – PDF nicht weitergeben</span> : null)}
               </div>
             )}

@@ -13,7 +13,7 @@ import {
   convertRanking, fetchStageRankings, kindOf, latestStartedStage, listRoadRaces, parseTissotTime, splitTissotName,
   stageFromTissot, statusesFromTeams, teamsToMatrix, tissotDate, type JsonFetcher, type TtRanking, type TtStage, type TtTeam,
 } from './tissot';
-import { applyAthlete, createEditionFromTissot, enrichRidersFromTissot, syncTissotStage } from './tissotCommit';
+import { applyAthlete, createEditionFromTissot, enrichRidersByUci, enrichRidersFromTissot, syncTissotStage } from './tissotCommit';
 import type { Rider } from '../domain/types';
 
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/tissot/${name}`, import.meta.url), 'utf8'));
@@ -33,6 +33,7 @@ function fetcher(over: Record<string, unknown> = {}): JsonFetcher & { calls: str
     '/competitions/tdf2026/stages/5/rankings/stage': STAGE,
     '/competitions/tdf2026/stages/5/rankings/overall': OVERALL,
     '/athletes/infos/10014972740/tdf2026/0': POG,
+    '/athletes/palmares/10014972740': fx('palmares-pogacar.json'),
     ...over,
   };
   const calls: string[] = [];
@@ -241,5 +242,23 @@ describe('Tissot – Übernahme ins LK Board', () => {
     expect(res).toMatchObject({ uciAdded: 1, withoutUci: 1, updated: 1 });
     const pog = alive(await db.riders.toArray()).find((r) => r.lastName === 'Pogačar')!;
     expect(pog.birthDate).toBe('1998-09-21');
+  });
+
+  it('Palmarès für alle Fahrer mit UCI-ID: ersetzt Liste, Schlüsselfakten nur wenn leer', async () => {
+    const { f } = await setup();
+    const all = alive(await db.riders.toArray());
+    const pog = all.find((r) => r.lastName === 'Pogacar')!;
+    const res = await enrichRidersByUci(all, null, { birthDates: false, places: false, accents: false, nationality: false, palmares: true, keyFacts: true }, undefined, f);
+    expect(res).toMatchObject({ checked: 8, updated: 1 });
+    const after = (await db.riders.get(pog.id))!;
+    expect(after.palmares!.length).toBeGreaterThan(300);
+    expect(after.palmaresSource).toMatch(/^Tissot Timing/);
+    expect(after.keyFacts[0]).toMatch(/^Gesamtsieg Tour de France/);
+    expect(after.birthDate).toBeUndefined(); // ohne Rennkontext keine Fahrer-Infos
+    // eigene Schlüsselfakten bleiben; unveränderter Abruf ändert nichts
+    await db.riders.put({ ...after, keyFacts: ['Eigener Fakt'] });
+    const again = await enrichRidersByUci(alive(await db.riders.toArray()), null, { birthDates: false, places: false, accents: false, nationality: false, palmares: true, keyFacts: true }, undefined, f);
+    expect(again.updated).toBe(0);
+    expect((await db.riders.get(pog.id))!.keyFacts).toEqual(['Eigener Fakt']);
   });
 });

@@ -543,6 +543,7 @@ try {
       '/competitions/tdf2026/stages/5/rankings/stage': 'tdf2026-s5-stage.json',
       '/competitions/tdf2026/stages/5/rankings/overall': 'tdf2026-s5-overall.json',
       '/athletes/infos/10014972740/tdf2026/0': 'athlete-pogacar.json',
+      '/athletes/palmares/10014972740': 'palmares-pogacar.json',
     };
     const f = map[u.pathname + u.search];
     return route.fulfill(f
@@ -575,14 +576,14 @@ try {
     const st = (await db.standings.toArray()).filter((s) => s.editionId === ed.id);
     const pog = (await db.riders.toArray()).find((r) => r.externalIds.some((x) => x.value === '10014972740'));
     const gc = st.find((s) => s.kind === 'gc');
-    return { name: ed.name, stages: (await db.stages.where('editionId').equals(ed.id).count()), kinds: st.map((s) => s.kind).sort().join(','), src: gc.source, pogRow: gc.rows.find((r) => r.riderId === pog.id), pog: [pog.displayName, pog.birthDate, pog.birthPlace] };
+    return { name: ed.name, stages: (await db.stages.where('editionId').equals(ed.id).count()), kinds: st.map((s) => s.kind).sort().join(','), src: gc.source, pogRow: gc.rows.find((r) => r.riderId === pog.id), pog: [pog.displayName, pog.birthDate, pog.birthPlace], pal: pog.palmares?.length ?? 0, fact: pog.keyFacts[0] ?? '' };
   });
   await page.waitForFunction(() => /Tissot \d\d:\d\d/.test(document.querySelector('.status')?.textContent ?? ''), null, { timeout: 15000 });
   const badge = await page.locator('.status .badge:has-text("Tissot")').textContent();
   const autoMsg = await page.evaluate(async () => (await window.__lk.db.device.get('tissotAutoState'))?.value?.message);
   check('Tissot', 'Tissot Timing: Rennen anlegen, Startliste prüfen und übernehmen, alle Wertungen holen, Fahrerdaten mit Akzenten, Auto-Aktualisierung',
     tt.name === 'Tour de France 2026' && tt.stages === 6 && tt.kinds === 'berg,etappe,gc,nachwuchs,punkte,team' && tt.src === 'Tissot Timing' && tt.pogRow?.rank === 4 && tt.pogRow?.gapSec === 473
-      && tt.pog.join('|') === 'Tadej Pogačar|1998-09-21|Komenda' && /Tissot \d\d:\d\d/.test(badge),
+      && tt.pog.join('|') === 'Tadej Pogačar|1998-09-21|Komenda' && tt.pal > 300 && /^Gesamtsieg Tour de France/.test(tt.fact) && /Tissot \d\d:\d\d/.test(badge),
     `${JSON.stringify(tt)} · ${badge}: ${autoMsg} · ${tissotHits.length} Abrufe`);
 } catch (e) {
   check('!', 'Unerwarteter Abbruch', false, String(e && e.stack || e));

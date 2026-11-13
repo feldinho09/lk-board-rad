@@ -11,7 +11,7 @@
  *
  * Wettbewerbs-Kennung = Kürzel + Jahr, z. B. "tdf2026", "tds2026", "prx2026".
  */
-import type { ClassificationKind, Stage, StageType, StartStatus } from '../domain/types';
+import type { ClassificationKind, PalmaresEntry, Stage, StageType, StartStatus } from '../domain/types';
 import { splitFullName } from './matching';
 
 export const TISSOT_API = 'https://prod.server.tissottiming.com';
@@ -83,6 +83,16 @@ export async function getRankings(compId: string, stage: number, which: 'stage' 
 
 export async function getAthlete(uciId: string, compId: string, f: JsonFetcher = tissotFetcher): Promise<TtAthlete | null> {
   return (await f(`/athletes/infos/${encodeURIComponent(uciId)}/${compId}/0`)) as TtAthlete | null;
+}
+
+/** Top-10-Ergebnisse (UCI-Rennen) eines Fahrers, neueste zuerst. */
+export async function getPalmares(uciId: string, f: JsonFetcher = tissotFetcher): Promise<PalmaresEntry[] | null> {
+  const d = (await f(`/athletes/palmares/${encodeURIComponent(uciId)}`)) as { year: number; palmares: { rank: string; name: string; description?: string; nation?: string }[] }[] | null;
+  if (!d) return null;
+  return d.flatMap((y) => y.palmares.map((e) => ({
+    year: y.year, rank: Number(e.rank), race: e.name.replace(/\s+/g, ' ').trim(),
+    ...(e.description?.trim() ? { detail: e.description.trim() } : {}), ...(e.nation ? { nation: e.nation } : {}),
+  }))).filter((e) => Number.isFinite(e.rank) && e.rank > 0).sort((a, b) => b.year - a.year || a.rank - b.rank);
 }
 
 // ---------------------------------------------------------------- Umwandlung

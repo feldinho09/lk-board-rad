@@ -9,7 +9,7 @@ import {
   type TtCompetition, type TtStage,
 } from '../import/tissot';
 import {
-  createEditionFromTissot, enrichRidersFromTissot, linkEditionToTissot, syncTissotStage, type EnrichOptions, type EnrichResult, type SyncReport,
+  createEditionFromTissot, enrichRidersByUci, enrichRidersFromTissot, linkEditionToTissot, syncTissotStage, type EnrichOptions, type EnrichResult, type SyncReport,
 } from '../import/tissotCommit';
 
 export const TISSOT_AUTO_KEY = 'tissotAuto';
@@ -33,7 +33,7 @@ export function TissotPanel({ editionId, onStartlist }: { editionId: string; onS
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [report, setReport] = useState<SyncReport | null>(null);
-  const [enrich, setEnrich] = useState<EnrichOptions>({ birthDates: true, places: true, accents: true, nationality: true });
+  const [enrich, setEnrich] = useState<EnrichOptions>({ birthDates: true, places: true, accents: true, nationality: true, palmares: true, keyFacts: true });
   const [enrichRes, setEnrichRes] = useState<EnrichResult | null>(null);
   const [relink, setRelink] = useState(false);
   const auto = useLiveQuery(() => db.device.get(TISSOT_AUTO_KEY).then((r) => r?.value as TissotAutoSetting | undefined), []);
@@ -154,9 +154,11 @@ export function TissotPanel({ editionId, onStartlist }: { editionId: string; onS
             <label className="confirm"><input type="checkbox" checked={enrich.places} onChange={(e) => setEnrich({ ...enrich, places: e.target.checked })} /> Geburtsort</label>
             <label className="confirm"><input type="checkbox" checked={enrich.nationality} onChange={(e) => setEnrich({ ...enrich, nationality: e.target.checked })} /> Nation</label>
             <label className="confirm"><input type="checkbox" checked={enrich.accents} onChange={(e) => setEnrich({ ...enrich, accents: e.target.checked })} /> Schreibweise mit Akzenten (Pogačar statt Pogacar)</label>
+            <label className="confirm"><input type="checkbox" checked={!!enrich.palmares} onChange={(e) => setEnrich({ ...enrich, palmares: e.target.checked })} /> Palmarès</label>
+            <label className="confirm"><input type="checkbox" checked={!!enrich.keyFacts} disabled={!enrich.palmares} onChange={(e) => setEnrich({ ...enrich, keyFacts: e.target.checked })} /> Schlüsselfakten vorschlagen (nur wenn leer)</label>
             <button onClick={runEnrich} disabled={!!busy}>Ergänzen</button>
           </div>
-          <p className="wide small muted">Füllt nur leere Felder; vorhandene Angaben bleiben. Vorher entsteht ein Wiederherstellungspunkt. Dauert bei 180 Fahrern etwa eine Minute.</p>
+          <p className="wide small muted">Füllt nur leere Felder; vorhandene Angaben bleiben. Das Palmarès (Top-10-Ergebnisse) wird bei jedem Abruf vollständig aktualisiert. Vorher entsteht ein Wiederherstellungspunkt. Dauert bei 180 Fahrern ein bis zwei Minuten.</p>
 
           <div className="wide row" style={{ margin: 0 }}>
             <label className="confirm"><input type="checkbox" checked={!!autoOn} onChange={(e) => setAuto({ enabled: e.target.checked })} />
@@ -248,6 +250,34 @@ export function useTissotAutoSync() {
     timer = setTimeout(tick, 1500);
     return () => { stop = true; clearTimeout(timer); };
   }, [auto?.enabled, auto?.editionId, auto?.minutes]);
+}
+
+/** Palmarès für ALLE erfassten Fahrer mit UCI-ID (unabhängig vom Rennen). */
+export function TissotPalmaresPanel() {
+  const riders = useLiveQuery(() => db.riders.toArray().then((rs) => alive(rs).filter((r) => !r.mergedInto && !r.archived)), []) ?? [];
+  const withUci = riders.filter((r) => r.externalIds.some((e) => e.ns === 'uci' && e.value));
+  const [facts, setFacts] = useState(true);
+  const [busy, setBusy] = useState('');
+  const [res, setRes] = useState<string>('');
+  const run = async () => {
+    setRes(''); setBusy('Start …');
+    try {
+      const r = await enrichRidersByUci(withUci, null, { birthDates: false, places: false, accents: false, nationality: false, palmares: true, keyFacts: facts }, (d, t) => setBusy(`${d} von ${t} …`));
+      setRes(`${r.checked} Fahrer abgefragt, ${r.updated} Profile aktualisiert.${r.failed.length ? ` Nicht möglich: ${r.failed.slice(0, 5).join(', ')}` : ''}`);
+    } catch (e) { setRes(err(e)); }
+    setBusy('');
+  };
+  return (
+    <div className="row">
+      <button onClick={run} disabled={!!busy || !withUci.length} title={withUci.length ? '' : 'Kein Fahrer mit UCI-ID – zuerst eine Startliste von Tissot importieren oder im Import „Fahrerdaten ergänzen“ ausführen'}>
+        Palmarès von Tissot holen ({withUci.length} Fahrer mit UCI-ID)
+      </button>
+      <label className="confirm"><input type="checkbox" checked={facts} onChange={(e) => setFacts(e.target.checked)} /> Schlüsselfakten vorschlagen, wenn leer</label>
+      {busy && <span className="small">{busy}</span>}
+      {res && <span className="small">{res}</span>}
+      {riders.length > withUci.length && <span className="small muted">{riders.length - withUci.length} Fahrer ohne UCI-ID werden übersprungen.</span>}
+    </div>
+  );
 }
 
 /** Kleine Statusanzeige im Kopf, wenn die automatische Aktualisierung läuft. */

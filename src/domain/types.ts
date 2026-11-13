@@ -32,6 +32,12 @@ export interface Rider extends Versioned {
   /** "YYYY" oder "YYYY-MM-DD"; unbekannt bleibt leer (nie erfinden). */
   birthDate?: string;
   birthPlace?: string;
+  heightCm?: number;
+  weightKg?: number;
+  residence?: string;
+  /** Ergebnisse (Top 10, je nach Quelle) aus einer Quelle; wird bei erneutem Abruf vollständig ersetzt */
+  palmares?: PalmaresEntry[];
+  palmaresSource?: string;
   riderType?: string;
   strengths?: string;
   bio?: string;
@@ -46,6 +52,15 @@ export interface Rider extends Versioned {
   searchTokens: string[];
   lastVerifiedAt?: string;
   sources?: string;
+}
+
+export interface PalmaresEntry {
+  year: number;
+  rank: number;
+  race: string;
+  /** z. B. "General classification", "Stages 3, 6" – leer bei Eintagesrennen */
+  detail?: string;
+  nation?: string;
 }
 
 export interface Team extends Versioned {

@@ -9,6 +9,7 @@
  */
 import type { Rider } from '../domain/types';
 import { normalize } from '../domain/text';
+import { plainToHtml } from '../domain/richtext';
 
 const API = 'https://www.wikidata.org/w/api.php';
 
@@ -25,11 +26,18 @@ export const browserFetcher: Fetcher = async (url) => {
 };
 
 interface Claim { mainsnak?: { datavalue?: { value?: unknown } }; rank?: string }
-interface Entity { id: string; labels?: Record<string, { value: string }>; descriptions?: Record<string, { value: string }>; claims?: Record<string, Claim[]> }
+interface Entity { id: string; labels?: Record<string, { value: string }>; descriptions?: Record<string, { value: string }>; claims?: Record<string, Claim[]>; sitelinks?: Record<string, { title: string }> }
 
 export type LookupStatus = 'sicher' | 'mehrdeutig' | 'nicht_gefunden' | 'fehler';
 
-export interface Candidate { qid: string; label: string; description: string; birthDate?: string; nationality?: string; nationalityAll: string[] }
+export interface Candidate {
+  qid: string; label: string; description: string; birthDate?: string; nationality?: string; nationalityAll: string[];
+  heightCm?: number; weightKg?: number; residence?: string; pcsId?: string;
+  /** Wikipedia-Artikel (deutsch bevorzugt, sonst englisch) */
+  wiki?: { lang: 'de' | 'en'; title: string };
+  /** Einleitung des Artikels als Klartext (gekürzt) */
+  intro?: string;
+}
 
 export interface LookupResult {
   riderId: string;
@@ -71,7 +79,7 @@ const itemIds = (e: Entity, p: string) => claimValues(e, p).map((v) => (v as { i
 async function getEntities(fetcher: Fetcher, ids: string[], props: string): Promise<Map<string, Entity>> {
   const out = new Map<string, Entity>();
   for (let i = 0; i < ids.length; i += 50) {
-    const r = await call(fetcher, { action: 'wbgetentities', ids: ids.slice(i, i + 50).join('|'), props, languages: 'de|en' });
+    const r = await call(fetcher, { action: 'wbgetentities', ids: ids.slice(i, i + 50).join('|'), props, languages: 'de|en', ...(props.includes('sitelinks') ? { sitefilter: 'dewiki|enwiki' } : {}) });
     for (const [id, e] of Object.entries((r.entities ?? {}) as Record<string, Entity>)) out.set(id, { ...e, id });
   }
   return out;
@@ -93,13 +101,59 @@ async function pool<T, R>(items: T[], n: number, fn: (t: T, i: number) => Promis
 
 const birthYear = (s?: string) => s?.match(/\d{4}/)?.[0];
 
+// Einheiten in Wikidata
+const U_M = 'Q11573', U_CM = 'Q174728', U_KG = 'Q11570';
+/** Grösse in cm bzw. Gewicht in kg aus einer Wikidata-Mengenangabe; unbekannte Einheiten → undefined */
+export function wdQuantity(v: unknown, kind: 'height' | 'weight'): number | undefined {
+  const q = v as { amount?: string; unit?: string } | undefined;
+  const n = Number(q?.amount);
+  const unit = q?.unit?.split('/').pop();
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  if (kind === 'height') {
+    const cm = unit === U_M ? n * 100 : unit === U_CM ? n : undefined;
+    return cm && cm > 120 && cm < 230 ? Math.round(cm) : undefined;
+  }
+  return unit === U_KG && n > 30 && n < 150 ? Math.round(n * 10) / 10 : undefined;
+}
+
+/** Einleitung eines Wikipedia-Artikels: erster Absatz, höchstens ~700 Zeichen, an Satzende gekürzt. */
+export function shortIntro(text: string | undefined, max = 700): string | undefined {
+  const first = (text ?? '').split(/\n+/).map((x) => x.trim()).find((x) => x.length > 40);
+  if (!first) return undefined;
+  if (first.length <= max) return first;
+  const cut = first.slice(0, max);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.\u00a0'));
+  return end > 200 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, '') + ' …';
+}
+
+/** Artikeleinleitungen in Stapeln zu 20 (Grenze der Wikipedia-API für Einleitungen). */
+async function fetchIntros(fetcher: Fetcher, lang: 'de' | 'en', titles: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < titles.length; i += 20) {
+    const batch = titles.slice(i, i + 20);
+    const url = `https://${lang}.wikipedia.org/w/api.php?` + new URLSearchParams({
+      action: 'query', prop: 'extracts', exintro: '1', explaintext: '1', exlimit: '20', redirects: '1', titles: batch.join('|'), format: 'json', origin: '*', maxlag: '5',
+    }).toString();
+    const r = (await fetcher(url)) as { query?: { normalized?: { from: string; to: string }[]; redirects?: { from: string; to: string }[]; pages?: Record<string, { title: string; extract?: string }> } };
+    const q = r.query ?? {};
+    const byTitle = new Map(Object.values(q.pages ?? {}).map((pg) => [pg.title, pg.extract]));
+    for (const t of batch) {
+      let cur = t;
+      for (const m of [...(q.normalized ?? []), ...(q.redirects ?? [])]) if (m.from === cur) cur = m.to;
+      const ex = shortIntro(byTitle.get(cur));
+      if (ex) out.set(t, ex);
+    }
+  }
+  return out;
+}
+
 /**
  * Sucht für jeden Fahrer den Wikidata-Eintrag und liefert Vorschläge.
  * Schreibt NICHTS – Übernahme erfolgt erst nach Bestätigung in der Oberfläche.
  */
 export async function lookupRiders(
   riders: Rider[],
-  opts: { fetcher?: Fetcher; onProgress?: (done: number, total: number) => void; signal?: AbortSignal } = {},
+  opts: { fetcher?: Fetcher; onProgress?: (done: number, total: number) => void; signal?: AbortSignal; /** Kurzbio, Grösse/Gewicht/Wohnort, PCS-Kennung */ extras?: boolean } = {},
 ): Promise<LookupResult[]> {
   const fetcher = opts.fetcher ?? browserFetcher;
   const total = riders.length * 2;
@@ -118,10 +172,10 @@ export async function lookupRiders(
 
   // 2. Einträge in Stapeln laden, dann Länder (für IOC-/ISO-Kürzel)
   const allIds = [...new Set(candidateIds.flat())];
-  const ents = await getEntities(fetcher, allIds, 'claims|labels|descriptions');
+  const ents = await getEntities(fetcher, allIds, opts.extras ? 'claims|labels|descriptions|sitelinks' : 'claims|labels|descriptions');
   opts.onProgress?.(Math.round(total * 0.75), total);
   const countryIds = new Set<string>();
-  for (const e of ents.values()) for (const p of ['P1532', 'P27']) for (const id of itemIds(e, p)) countryIds.add(id);
+  for (const e of ents.values()) for (const p of ['P1532', 'P27', ...(opts.extras ? ['P551'] : [])]) for (const id of itemIds(e, p)) countryIds.add(id);
   const countries = await getEntities(fetcher, [...countryIds], 'claims|labels');
   const countryCode = (qid: string) => {
     const c = countries.get(qid);
@@ -130,6 +184,22 @@ export async function lookupRiders(
     const iso = claimValues(c, 'P298')[0] as string | undefined; // ISO 3166-1 alpha-3 als Ersatz
     return (ioc ?? iso ?? c.labels?.de?.value ?? c.labels?.en?.value ?? qid).toUpperCase();
   };
+  const placeName = (qid: string) => countries.get(qid)?.labels?.de?.value ?? countries.get(qid)?.labels?.en?.value;
+
+  // Wikipedia-Einleitungen (nur mit extras): deutsch bevorzugt, sonst englisch
+  const intros = new Map<string, { lang: 'de' | 'en'; title: string; intro?: string }>();
+  if (opts.extras) {
+    for (const e of ents.values()) {
+      const de = e.sitelinks?.dewiki?.title, en = e.sitelinks?.enwiki?.title;
+      if (de) intros.set(e.id, { lang: 'de', title: de });
+      else if (en) intros.set(e.id, { lang: 'en', title: en });
+    }
+    for (const lang of ['de', 'en'] as const) {
+      const list = [...intros.values()].filter((x) => x.lang === lang);
+      const got = await fetchIntros(fetcher, lang, [...new Set(list.map((x) => x.title))]);
+      for (const x of list) x.intro = got.get(x.title);
+    }
+  }
   opts.onProgress?.(total, total);
 
   // 3. Bewerten
@@ -147,6 +217,14 @@ export async function lookupRiders(
         // Sportnation zuerst; sonst Staatsbürgerschaft nur, wenn eindeutig
         nationality: sport.length === 1 ? sport[0] : sport.length === 0 && citizen.length === 1 ? citizen[0] : undefined,
         nationalityAll: all,
+        ...(opts.extras ? {
+          heightCm: wdQuantity(claimValues(e, 'P2048')[0], 'height'),
+          weightKg: wdQuantity(claimValues(e, 'P2067')[0], 'weight'),
+          residence: itemIds(e, 'P551').map(placeName).find(Boolean),
+          pcsId: claimValues(e, 'P1663')[0] as string | undefined,
+          wiki: intros.get(e.id) ? { lang: intros.get(e.id)!.lang, title: intros.get(e.id)!.title } : undefined,
+          intro: intros.get(e.id)?.intro,
+        } : {}),
         _cyclist: CYCLIST.test(`${e.descriptions?.de?.value ?? ''} ${e.descriptions?.en?.value ?? ''}`) || itemIds(e, 'P106').includes(OCC_SPORT_CYCLIST),
       } as Candidate & { _cyclist: boolean };
     }).filter((c) => (c as Candidate & { _cyclist: boolean })._cyclist || r.externalIds.some((x) => x.ns === 'wikidata' && x.value === c.qid));
@@ -168,15 +246,32 @@ export async function lookupRiders(
   });
 }
 
-/** Neue Profilwerte: füllt standardmäßig nur LEERE Felder; Überschreiben nur ausdrücklich. */
-export function applyLookup(r: Rider, c: Candidate, overwrite: boolean, today = new Date().toISOString().slice(0, 10)): Rider {
+export interface ApplyFields { bio?: boolean; physical?: boolean }
+
+/** Neue Profilwerte: füllt standardmäßig nur LEERE Felder; Überschreiben nur ausdrücklich (gilt nur für Land/Datum). */
+export function applyLookup(r: Rider, c: Candidate, overwrite: boolean, today = new Date().toISOString().slice(0, 10), fields: ApplyFields = {}): Rider {
   const next: Rider = { ...r, externalIds: [...r.externalIds] };
   const better = (old: string | undefined, neu: string | undefined) =>
     neu && (overwrite || !old || (old.length === 4 && neu.length === 10 && neu.startsWith(old))) ? neu : old;
   next.birthDate = better(r.birthDate, c.birthDate);
   next.nationality = better(r.nationality, c.nationality);
+  if (fields.physical) {
+    if (!r.heightCm && c.heightCm) next.heightCm = c.heightCm;
+    if (!r.weightKg && c.weightKg) next.weightKg = c.weightKg;
+    if (!r.residence && c.residence) next.residence = c.residence;
+  }
+  // Kurzbio nur in ein leeres Feld – eigene Texte werden nie ersetzt
+  if (fields.bio && c.intro && !(r.bio ?? '').replace(/<[^>]*>|&nbsp;/g, '').trim()) next.bio = plainToHtml(c.intro);
   if (!next.externalIds.some((e) => e.ns === 'wikidata')) next.externalIds.push({ ns: 'wikidata', value: c.qid });
-  const src = `Wikidata ${c.qid} (abgerufen ${today})`;
-  next.sources = r.sources ? (r.sources.includes(c.qid) ? r.sources.replace(/Wikidata Q\d+ \(abgerufen [\d-]+\)/, src) : `${r.sources}; ${src}`) : src;
+  if (c.pcsId && !next.externalIds.some((e) => e.ns === 'pcs')) next.externalIds.push({ ns: 'pcs', value: c.pcsId });
+  let src = `Wikidata ${c.qid} (abgerufen ${today})`;
+  if (next.bio !== r.bio && c.wiki) src += `; Kurzbio: Wikipedia ${c.wiki.lang} „${c.wiki.title}“ (CC BY-SA)`;
+  const old = r.sources ?? '';
+  next.sources = old ? (old.includes(c.qid) ? old.replace(/Wikidata Q\d+ \(abgerufen [\d-]+\)(; Kurzbio: Wikipedia [^;]+)?/, src) : `${old}; ${src}`) : src;
   return next;
+}
+
+/** Hat die Übernahme etwas am Profil geändert? */
+export function lookupChanged(a: Rider, b: Rider): boolean {
+  return (['birthDate', 'nationality', 'heightCm', 'weightKg', 'residence', 'bio', 'sources'] as const).some((k) => a[k] !== b[k]) || a.externalIds.length !== b.externalIds.length;
 }

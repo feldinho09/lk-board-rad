@@ -113,6 +113,16 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 | Automatische Aktualisierung während einer laufenden Etappe | 🟡 | Logik getestet; ein echter Renntag liegt ausserhalb der Saison noch nicht vor |
 | Live-Zwischenstände während der Etappe (Tissot-Live-Endpunkte) | ⬜ | nicht umgesetzt; ausserhalb der Saison nicht prüfbar |
 
+## Ergänzung 0.1.5 – Fahrerinfos aus Wikipedia und Tissot
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| Kurzbio aus Wikipedia (Einleitung, deutsch bevorzugt, sonst englisch; nur in leere Felder; Quelle + Lizenz CC BY-SA vermerkt) | 🟡 | Unit-Tests mit nachgebildeter Wikipedia-API; gegen das echte Wikipedia nicht geprüft (Testumgebung hat keinen Zugang) |
+| Grösse, Gewicht, Wohnort aus Wikidata; PCS-Kennung aus Wikidata wird gespeichert | 🟡 | Unit-Tests (Einheiten m/cm/kg, unplausible Werte verworfen); echtes Wikidata ungeprüft |
+| Palmarès (Top-10-Ergebnisse) von Tissot für alle Fahrer mit UCI-ID | ✅ | Unit-Tests mit echten Tissot-Daten (Pogačar, Kooij) + e2e |
+| Schlüsselfakten-Vorschlag aus dem Palmarès nur bei leeren Schlüsselfakten | ✅ | Unit-Tests; dabei Fehler gefunden und behoben („Vuelta a Andalucía“ als Vuelta-Sieg gewertet) |
+| Anzeige in Fahrerkarte (Details), Profil und PDF-Export | ✅ | Sichtprüfung, Typprüfung |
+
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 
 1. Konfigurierbares Board (Blöcke, Vorlagen) mit Entwurf → Vorschau → Freigabe.

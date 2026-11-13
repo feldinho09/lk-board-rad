@@ -6,6 +6,9 @@ import { normalize, riderSearchTokens } from '../domain/text';
 import { toPlain } from '../domain/richtext';
 import { RichText, RichView } from './RichText';
 import { WikidataPanel } from './WikidataPanel';
+import { TissotPalmaresPanel } from './TissotPanel';
+import { PalmaresList } from './PalmaresView';
+import { IS_ARTIFACT } from './host';
 import { useApp } from './state';
 import { confirmDialog } from './dialogs';
 
@@ -42,6 +45,7 @@ function RiderList() {
         <button onClick={create}>+ Fahrer</button>
       </div>
       <WikidataPanel />
+      {!IS_ARTIFACT && <TissotPalmaresPanel />}
       <table className="table">
         <thead><tr><th>Name</th><th>Nation</th><th>Geburt</th><th>Typ</th><th>Aussprache</th></tr></thead>
         <tbody>
@@ -102,6 +106,9 @@ function RiderDetail({ id }: { id: string }) {
         <label>Nationalität <input value={draft.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value || undefined })} /></label>
         <label>Geburtsdatum oder -jahr <input value={draft.birthDate ?? ''} placeholder="JJJJ oder JJJJ-MM-TT – leer lassen, wenn unbekannt" onChange={(e) => set({ birthDate: e.target.value || undefined })} /></label>
         <label>Geburtsort <input value={draft.birthPlace ?? ''} onChange={(e) => set({ birthPlace: e.target.value || undefined })} /></label>
+        <label>Grösse (cm) <input type="number" value={draft.heightCm ?? ''} onChange={(e) => set({ heightCm: e.target.value ? Number(e.target.value) : undefined })} /></label>
+        <label>Gewicht (kg) <input type="number" step="0.1" value={draft.weightKg ?? ''} onChange={(e) => set({ weightKg: e.target.value ? Number(e.target.value) : undefined })} /></label>
+        <label>Wohnort <input value={draft.residence ?? ''} onChange={(e) => set({ residence: e.target.value || undefined })} /></label>
         <label>Fahrertyp <input value={draft.riderType ?? ''} onChange={(e) => set({ riderType: e.target.value || undefined })} /></label>
         <label>Tags (Komma) <input value={draft.tags.join(', ')} onChange={(e) => set({ tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} /></label>
         <div className="wide rt-field"><span className="rt-label">Stärken</span>
@@ -119,6 +126,9 @@ function RiderDetail({ id }: { id: string }) {
           );
         })}
         <label>Quellen <input value={draft.sources ?? ''} onChange={(e) => set({ sources: e.target.value || undefined })} /></label>
+        {draft.palmares && draft.palmares.length > 0 && (
+          <div className="wide"><span className="rt-label">Palmarès</span><PalmaresList entries={draft.palmares} source={draft.palmaresSource} years={5} /></div>
+        )}
         <label>Zuletzt geprüft <input type="date" value={draft.lastVerifiedAt ?? ''} onChange={(e) => set({ lastVerifiedAt: e.target.value || undefined })} /></label>
         <div className="wide muted small">Externe IDs: {rider.externalIds.length ? rider.externalIds.map((e) => `${e.ns}:${e.value}`).join(', ') : 'keine'}</div>
       </fieldset>
