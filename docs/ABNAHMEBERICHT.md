@@ -117,11 +117,22 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 
 | Prüfung | Stand | Nachweis |
 | --- | --- | --- |
-| Kurzbio aus Wikipedia (Einleitung, deutsch bevorzugt, sonst englisch; nur in leere Felder; Quelle + Lizenz CC BY-SA vermerkt) | 🟡 | Unit-Tests mit nachgebildeter Wikipedia-API; gegen das echte Wikipedia nicht geprüft (Testumgebung hat keinen Zugang) |
-| Grösse, Gewicht, Wohnort aus Wikidata; PCS-Kennung aus Wikidata wird gespeichert | 🟡 | Unit-Tests (Einheiten m/cm/kg, unplausible Werte verworfen); echtes Wikidata ungeprüft |
+| Kurzbio aus Wikipedia (Einleitung, deutsch bevorzugt, sonst englisch; Lautschrift entfernt; nur in leere Felder; Quelle + Lizenz CC BY-SA vermerkt) | ✅ | Unit-Tests + echter Lauf 13. 11. 2026 (Pogačar, Küng, Reusser, Schmid: alle eindeutig, Kurzbio korrekt) |
+| Grösse, Gewicht, Wohnort aus Wikidata | ✅ | Unit-Tests (Einheiten m/cm/kg, unplausible Werte verworfen) + echter Lauf (z. B. Küng 193 cm, 83 kg). Wikidata führt bei PCS nur Nummern statt Seitenadressen – werden ignoriert |
+| Wikimedia bremst bei vielen Anfragen (429) | ✅ | Abruf wartet und wiederholt bis zu dreimal; danach klare Meldung |
 | Palmarès (Top-10-Ergebnisse) von Tissot für alle Fahrer mit UCI-ID | ✅ | Unit-Tests mit echten Tissot-Daten (Pogačar, Kooij) + e2e |
 | Schlüsselfakten-Vorschlag aus dem Palmarès nur bei leeren Schlüsselfakten | ✅ | Unit-Tests; dabei Fehler gefunden und behoben („Vuelta a Andalucía“ als Vuelta-Sieg gewertet) |
 | Anzeige in Fahrerkarte (Details), Profil und PDF-Export | ✅ | Sichtprüfung, Typprüfung |
+
+## Ergänzung 0.1.6 – kopierte PCS-Fahrerseiten
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| Einfügen im Fahrerprofil oder mehrere Seiten auf einmal in der Fahrerliste; Zuordnung über Namen (akzentfrei) und Jahrgang | ✅ | Unit-Tests + e2e; lokal gegen zwei echte Kopien geprüft (nicht im Repository) |
+| Geburtsdatum, Nation, Geburtsort, Grösse, Gewicht, Fahrertyp (stärkste Spezialität) – nur leere Felder | ✅ | Unit-Tests + e2e |
+| Teamstationen (inkl. Vertragsjahre), Top-Ergebnisse auf Deutsch, Siege, Familie – werden mit jeder neuen Kopie ersetzt | ✅ | Unit-Tests + e2e |
+| Anzeige in Profil, Fahrerkarte (Details) und PDF-Export | ✅ | Typprüfung, e2e |
+| Kein automatischer PCS-Abruf (Nutzungsbedingungen) | ✅ | nur Link zur PCS-Seite; Kopieren macht der Nutzer |
 
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 

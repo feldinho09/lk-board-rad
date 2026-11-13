@@ -19,10 +19,23 @@ const OCC_SPORT_CYCLIST = 'Q2309784'; // Beruf „Radsportler“ – zusätzlich
 
 export type Fetcher = (url: string) => Promise<unknown>;
 
+/** Abruf mit schonender Wiederholung, wenn Wikimedia bremst (429/503 oder „maxlag“). */
 export const browserFetcher: Fetcher = async (url) => {
-  const res = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' });
-  if (!res.ok) throw new Error(`Wikidata antwortet mit ${res.status}`);
-  return res.json();
+  const host = new URL(url).hostname.includes('wikipedia') ? 'Wikipedia' : 'Wikidata';
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' });
+    const busy = res.status === 429 || res.status === 503;
+    const body = busy ? null : await res.json().catch(() => null);
+    const lag = (body as { error?: { code?: string } } | null)?.error?.code === 'maxlag';
+    if ((busy || lag) && attempt < 3) {
+      const wait = Number(res.headers.get('retry-after')) || 2 ** attempt * 2;
+      await new Promise((r) => setTimeout(r, Math.min(wait, 20) * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`${host} antwortet mit ${res.status}${busy ? ' (zu viele Anfragen – bitte später nochmals)' : ''}`);
+    if (body == null) throw new Error(`${host}: unerwartete Antwort`);
+    return body;
+  }
 };
 
 interface Claim { mainsnak?: { datavalue?: { value?: unknown } }; rank?: string }
@@ -118,8 +131,10 @@ export function wdQuantity(v: unknown, kind: 'height' | 'weight'): number | unde
 
 /** Einleitung eines Wikipedia-Artikels: erster Absatz, höchstens ~700 Zeichen, an Satzende gekürzt. */
 export function shortIntro(text: string | undefined, max = 700): string | undefined {
-  const first = (text ?? '').split(/\n+/).map((x) => x.trim()).find((x) => x.length > 40);
+  let first = (text ?? '').split(/\n+/).map((x) => x.trim()).find((x) => x.length > 40);
   if (!first) return undefined;
+  // Lautschrift am Anfang weglassen: „([taˈdɛ́ːj …] , * 21. …)“ → „(* 21. …)“
+  first = first.replace(/\(\s*\[[^\]]*\]\s*[,;]?\s*/, '(').replace(/\(\s*\)\s*/, '').replace(/\s+,/g, ',');
   if (first.length <= max) return first;
   const cut = first.slice(0, max);
   const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.\u00a0'));
@@ -153,13 +168,13 @@ async function fetchIntros(fetcher: Fetcher, lang: 'de' | 'en', titles: string[]
  */
 export async function lookupRiders(
   riders: Rider[],
-  opts: { fetcher?: Fetcher; onProgress?: (done: number, total: number) => void; signal?: AbortSignal; /** Kurzbio, Grösse/Gewicht/Wohnort, PCS-Kennung */ extras?: boolean } = {},
+  opts: { fetcher?: Fetcher; onProgress?: (done: number, total: number) => void; signal?: AbortSignal; /** Kurzbio, Grösse/Gewicht/Wohnort, PCS-Kennung */ extras?: boolean; concurrency?: number } = {},
 ): Promise<LookupResult[]> {
   const fetcher = opts.fetcher ?? browserFetcher;
   const total = riders.length * 2;
 
   // 1. Kandidaten je Fahrer (vorhandene Wikidata-ID hat Vorrang vor der Namenssuche)
-  const candidateIds = await pool(riders, 4, async (r) => {
+  const candidateIds = await pool(riders, opts.concurrency ?? 4, async (r) => {
     const known = r.externalIds.find((e) => e.ns === 'wikidata')?.value;
     if (known) return [known];
     const name = `${r.firstName} ${r.lastName}`.trim() || r.displayName;
@@ -221,7 +236,8 @@ export async function lookupRiders(
           heightCm: wdQuantity(claimValues(e, 'P2048')[0], 'height'),
           weightKg: wdQuantity(claimValues(e, 'P2067')[0], 'weight'),
           residence: itemIds(e, 'P551').map(placeName).find(Boolean),
-          pcsId: claimValues(e, 'P1663')[0] as string | undefined,
+          // nur echte Seitenkennung („tadej-pogacar“), keine Nummern
+          pcsId: [claimValues(e, 'P1663')[0]].find((v): v is string => typeof v === 'string' && /^[a-z0-9]+(-[a-z0-9]+)+$/.test(v)),
           wiki: intros.get(e.id) ? { lang: intros.get(e.id)!.lang, title: intros.get(e.id)!.title } : undefined,
           intro: intros.get(e.id)?.intro,
         } : {}),

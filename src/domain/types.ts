@@ -38,6 +38,12 @@ export interface Rider extends Versioned {
   /** Ergebnisse (Top 10, je nach Quelle) aus einer Quelle; wird bei erneutem Abruf vollständig ersetzt */
   palmares?: PalmaresEntry[];
   palmaresSource?: string;
+  /** Teamstationen (aus kopierter PCS-Seite; inkl. Vertragsjahre) */
+  teamHistory?: { year: number; team: string; level?: string }[];
+  /** Top-Ergebnisse laut PCS, auf Deutsch */
+  topResults?: string[];
+  careerWins?: number;
+  family?: string[];
   riderType?: string;
   strengths?: string;
   bio?: string;

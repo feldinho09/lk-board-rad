@@ -1,3 +1,4 @@
+import { CareerInfo } from './PcsRiderPanel';
 import { PalmaresList, physicalLine } from './PalmaresView';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -265,6 +266,7 @@ function RiderCard({ edition, parts, riders, stage, stages, standings, riderId, 
               {r.strengths && <div className="detail-row"><span className="label">Stärken</span> <RichView value={r.strengths} /></div>}
               {r.bio && <div className="detail-row"><span className="label">Kurzbio</span> <RichView value={r.bio} /></div>}
               {physicalLine(r) && <div className="detail-row"><span className="label">Person</span> {physicalLine(r)}</div>}
+              {(r.teamHistory?.length || r.topResults?.length || r.family?.length) ? <div className="detail-row"><CareerInfo r={r} compact /></div> : null}
               {r.palmares && r.palmares.length > 0 && <div className="detail-row"><span className="label">Erfolge</span> <PalmaresList entries={r.palmares} compact years={2} /></div>}
               <NotesList notes={notes} editionId={edition.id} />
               <p className="muted small">Quellen: {r.sources ?? '–'} {r.lastVerifiedAt ? `· geprüft ${r.lastVerifiedAt}` : ''}</p>

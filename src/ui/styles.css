@@ -241,3 +241,10 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4p
 .palmares .pal-y { font-variant-numeric: tabular-nums; color: var(--muted, #9aa4b2); min-width: 3em; }
 .palmares .pal-win { font-weight: 700; }
 .palmares.compact { font-size: .92em; }
+
+/* Karriere (PCS) */
+.career > div { margin: .2em 0; line-height: 1.4; }
+.career .label { text-transform: uppercase; font-size: .78em; letter-spacing: .04em; color: var(--muted, #9aa4b2); margin-right: .4em; }
+.career ul { margin: .2em 0 .2em 1.2em; padding: 0; }
+.career.compact { font-size: .92em; }
+.pcs-rider textarea { width: 100%; font: inherit; }

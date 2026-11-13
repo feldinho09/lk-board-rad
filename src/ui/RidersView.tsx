@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, alive, mutate, newRecord } from '../db/db';
 import type { Note, Rider } from '../domain/types';
@@ -8,6 +8,7 @@ import { RichText, RichView } from './RichText';
 import { WikidataPanel } from './WikidataPanel';
 import { TissotPalmaresPanel } from './TissotPanel';
 import { PalmaresList } from './PalmaresView';
+import { CareerInfo, PcsRiderPastePanel } from './PcsRiderPanel';
 import { IS_ARTIFACT } from './host';
 import { useApp } from './state';
 import { confirmDialog } from './dialogs';
@@ -46,6 +47,10 @@ function RiderList() {
       </div>
       <WikidataPanel />
       {!IS_ARTIFACT && <TissotPalmaresPanel />}
+      <details className="panel">
+        <summary>PCS-Fahrerseiten einfügen (eine oder mehrere)</summary>
+        <PcsRiderPastePanel />
+      </details>
       <table className="table">
         <thead><tr><th>Name</th><th>Nation</th><th>Geburt</th><th>Typ</th><th>Aussprache</th></tr></thead>
         <tbody>
@@ -73,7 +78,12 @@ function RiderDetail({ id }: { id: string }) {
   const [noteKey, setNoteKey] = useState(0);
   const [editNote, setEditNote] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
-  useEffect(() => { if (rider && (!draft || draft.id !== rider.id)) setDraft(rider); }, [rider]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Entwurf folgt Änderungen von aussen (PCS, Wikipedia, Tissot), solange nichts ungespeichert ist
+  const synced = useRef<Rider | null>(null);
+  useEffect(() => {
+    if (!rider) return;
+    if (!draft || draft.id !== rider.id || JSON.stringify(draft) === JSON.stringify(synced.current)) { setDraft(rider); synced.current = rider; }
+  }, [rider]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!rider || !draft) return <p>Fahrer nicht gefunden.</p>;
   if (rider.mergedInto) return <p>Dieser Datensatz wurde zusammengeführt. <a href={`#fahrer-${rider.mergedInto}`}>Zum aktuellen Profil</a></p>;
   const dirty = JSON.stringify(draft) !== JSON.stringify(rider);
@@ -128,6 +138,15 @@ function RiderDetail({ id }: { id: string }) {
         <label>Quellen <input value={draft.sources ?? ''} onChange={(e) => set({ sources: e.target.value || undefined })} /></label>
         {draft.palmares && draft.palmares.length > 0 && (
           <div className="wide"><span className="rt-label">Palmarès</span><PalmaresList entries={draft.palmares} source={draft.palmaresSource} years={5} /></div>
+        )}
+        {(draft.teamHistory?.length || draft.topResults?.length || draft.family?.length) ? (
+          <div className="wide"><span className="rt-label">Karriere (PCS)</span><CareerInfo r={draft} /></div>
+        ) : null}
+        {!IS_ARTIFACT && (
+          <details className="wide">
+            <summary>Infos von ProCyclingStats einfügen</summary>
+            {dirty ? <p className="warn small">Zuerst die Änderungen speichern.</p> : <PcsRiderPastePanel riderId={draft.id} />}
+          </details>
         )}
         <label>Zuletzt geprüft <input type="date" value={draft.lastVerifiedAt ?? ''} onChange={(e) => set({ lastVerifiedAt: e.target.value || undefined })} /></label>
         <div className="wide muted small">Externe IDs: {rider.externalIds.length ? rider.externalIds.map((e) => `${e.ns}:${e.value}`).join(', ') : 'keine'}</div>

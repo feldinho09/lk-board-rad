@@ -117,6 +117,8 @@ describe('Wikidata', () => {
     expect(s.length).toBeLessThanOrEqual(700);
     expect(s.endsWith('.')).toBe(true);
     expect(shortIntro('kurz')).toBeUndefined();
+    expect(shortIntro('Tadej Pogačar ([taˈdɛ́ːj pɔˈɡáːtʃaɾ] , * 21. September 1998 in Ljubljana) ist ein slowenischer Radrennfahrer.'))
+      .toBe('Tadej Pogačar (* 21. September 1998 in Ljubljana) ist ein slowenischer Radrennfahrer.');
   });
 
   it('lädt Einträge gebündelt (höchstens 50 je Anfrage)', async () => {

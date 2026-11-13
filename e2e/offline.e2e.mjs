@@ -585,6 +585,21 @@ try {
     tt.name === 'Tour de France 2026' && tt.stages === 6 && tt.kinds === 'berg,etappe,gc,nachwuchs,punkte,team' && tt.src === 'Tissot Timing' && tt.pogRow?.rank === 4 && tt.pogRow?.gapSec === 473
       && tt.pog.join('|') === 'Tadej Pogačar|1998-09-21|Komenda' && tt.pal > 300 && /^Gesamtsieg Tour de France/.test(tt.fact) && /Tissot \d\d:\d\d/.test(badge),
     `${JSON.stringify(tt)} · ${badge}: ${autoMsg} · ${tissotHits.length} Abrufe`);
+
+  // PCS-Fahrerseite einfügen (erfundener Inhalt im PCS-Aufbau) – Zuordnung über den Namen
+  await page.goto(URL + '#fahrer');
+  await page.locator('summary', { hasText: 'PCS-Fahrerseiten einfügen' }).click();
+  await page.getByLabel('PCS-Fahrerseite einfügen').fill(['Name:Tadej Pogačar', 'Date of birth:21stSeptember 1998 (28)', 'Nationality:Slovenia', 'Weight:66kgHeight:1.76m', 'Place of birth:Klanec',
+    'Top results', "2x Testrennen  ('24, '25)", 'Teams', '2027Team Test (WT)', '2026Team Test (WT)', '2025Team Alt (WT)', 'Program', 'Key statistics', '12Wins', 'Family', 'Tilen Pogačar (Brother)', 'Grand Tours'].join('\n'));
+  await page.getByRole('button', { name: '1 Profil ergänzen' }).click();
+  await page.waitForSelector('text=1 Profil ergänzt.');
+  const pcsR = await page.evaluate(async () => {
+    const r = (await window.__lk.db.riders.toArray()).find((x) => x.externalIds.some((e) => e.value === '10014972740'));
+    return { h: r.heightCm, w: r.weightKg, place: r.birthPlace, teams: r.teamHistory?.length, top: r.topResults?.[0], wins: r.careerWins, fam: r.family?.[0], facts: r.keyFacts[0] };
+  });
+  check('PCS', 'PCS-Fahrerseite einfügen: Grösse/Gewicht, Teams, Top-Ergebnisse, Familie; Geburtsort und Schlüsselfakten bleiben (waren schon gefüllt)',
+    pcsR.h === 176 && pcsR.w === 66 && pcsR.place === 'Komenda' && pcsR.teams === 3 && pcsR.top === '2× Sieg Testrennen (2024, 2025)' && pcsR.wins === 12 && pcsR.fam === 'Tilen Pogačar (Bruder)' && /^Gesamtsieg Tour de France/.test(pcsR.facts),
+    JSON.stringify(pcsR));
 } catch (e) {
   check('!', 'Unerwarteter Abbruch', false, String(e && e.stack || e));
   await page.screenshot({ path: `${screens}/fehler.png` }).catch(() => {});

@@ -56,5 +56,7 @@ export default defineConfig(({ mode }) => ({
     environment: 'node',
     globals: true,
     setupFiles: ['src/test-setup.ts'],
+    // PDF-Erzeugung und IndexedDB-Simulation brauchen bei parallelen Läufen mehr als 5 s
+    testTimeout: 30000,
   },
 }));

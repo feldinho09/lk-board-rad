@@ -10,7 +10,7 @@ import { useApp } from './state';
 const KINDS: ClassificationKind[] = ['etappe', 'gc', 'punkte', 'berg', 'nachwuchs', 'team'];
 const CARD_FIELDS: [keyof ExportOptions['card'], string][] = [
   ['pronunciation', 'Aussprache'], ['natAge', 'Nation & Alter'], ['type', 'Fahrertyp'], ['results', 'Etappen- & Gesamtplatz'],
-  ['facts', 'Schlüsselfakten (max. 3)'], ['strengths', 'Stärken'], ['bio', 'Kurzbiografie'], ['person', 'Geburtsort, Grösse, Gewicht, Wohnort'], ['palmares', 'Erfolge (letzte Siege)'], ['notes', 'Notizen'],
+  ['facts', 'Schlüsselfakten (max. 3)'], ['strengths', 'Stärken'], ['bio', 'Kurzbiografie'], ['person', 'Geburtsort, Grösse, Gewicht, Wohnort'], ['palmares', 'Erfolge (letzte Siege)'], ['career', 'Teams & Top-Ergebnisse (PCS)'], ['notes', 'Notizen'],
 ];
 
 /** PDF-Export mit frei wählbaren Inhalten. Die Auswahl wird auf diesem Gerät gemerkt. */

@@ -3,6 +3,7 @@
  * Daten werden lokal gesammelt (auch offline), das PDF entsteht im Browser.
  * Private Notizen kommen nur hinein, wenn ausdrücklich gewählt (Bauplan 9/14).
  */
+import { teamSpans } from '../import/pcsRider';
 import { db, alive } from '../db/db';
 import type { ClassificationKind, ClassificationStanding, Edition, Note, Participation, RaceEvent, RaceGroup, Rider, Stage } from '../domain/types';
 import { CLASSIFICATION_LABEL, START_STATUS_LABEL } from '../domain/types';
@@ -15,7 +16,7 @@ export interface ExportOptions {
   riderScope: 'alle' | 'favoriten' | 'angeheftet' | 'aktiv';
   startlist: boolean;
   cards: boolean;
-  card: { pronunciation: boolean; type: boolean; natAge: boolean; facts: boolean; strengths: boolean; bio: boolean; person: boolean; palmares: boolean; notes: boolean; privateNotes: boolean; results: boolean };
+  card: { pronunciation: boolean; type: boolean; natAge: boolean; facts: boolean; strengths: boolean; bio: boolean; person: boolean; palmares: boolean; career: boolean; notes: boolean; privateNotes: boolean; results: boolean };
   standings: ClassificationKind[];
   standingsTop: number; // 0 = alle
   statistik: boolean;
@@ -32,7 +33,7 @@ export const DEFAULT_EXPORT: ExportOptions = {
   riderScope: 'alle',
   startlist: true,
   cards: true,
-  card: { pronunciation: true, type: true, natAge: true, facts: true, strengths: false, bio: false, person: false, palmares: false, notes: false, privateNotes: false, results: true },
+  card: { pronunciation: true, type: true, natAge: true, facts: true, strengths: false, bio: false, person: false, palmares: false, career: false, notes: false, privateNotes: false, results: true },
   standings: [],
   standingsTop: 10,
   statistik: true,
@@ -271,6 +272,13 @@ function riderCard(d: ExportData, o: ExportOptions, p: Participation, blocks: (v
   if (c.person && r) {
     const per = [r.birthPlace ? `geb. in ${r.birthPlace}` : '', r.heightCm ? `${r.heightCm} cm` : '', r.weightKg ? `${r.weightKg} kg` : '', r.residence ? `wohnt in ${r.residence}` : ''].filter(Boolean).join(' · ');
     if (per) stack.push({ text: [{ text: 'PERSON  ', style: 'label' }, per] });
+  }
+  if (c.career && r) {
+    const y = new Date().getFullYear();
+    const spans = teamSpans(r.teamHistory ?? []).filter((t) => t.from <= y).slice(0, 4)
+      .map((t) => `${t.from === t.to ? t.from : `${t.from}–${Math.min(t.to, y)}`} ${t.team}`);
+    if (spans.length) stack.push({ text: [{ text: 'TEAMS  ', style: 'label' }, spans.join(' · ')] });
+    if (r.topResults?.length) stack.push({ text: 'TOP-ERGEBNISSE', style: 'label', margin: [0, 3, 0, 0] }, { ul: r.topResults.slice(0, 6), fontSize: 8.5 });
   }
   if (c.palmares && r?.palmares?.length) {
     const wins = r.palmares.filter((e) => e.rank === 1 && (!e.detail || /general|^stage/i.test(e.detail)));
