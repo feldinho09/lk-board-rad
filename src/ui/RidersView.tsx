@@ -101,6 +101,7 @@ function RiderDetail({ id }: { id: string }) {
         <label>Aussprache <input value={draft.pronunciation ?? ''} onChange={(e) => set({ pronunciation: e.target.value })} /></label>
         <label>Nationalität <input value={draft.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value || undefined })} /></label>
         <label>Geburtsdatum oder -jahr <input value={draft.birthDate ?? ''} placeholder="JJJJ oder JJJJ-MM-TT – leer lassen, wenn unbekannt" onChange={(e) => set({ birthDate: e.target.value || undefined })} /></label>
+        <label>Geburtsort <input value={draft.birthPlace ?? ''} onChange={(e) => set({ birthPlace: e.target.value || undefined })} /></label>
         <label>Fahrertyp <input value={draft.riderType ?? ''} onChange={(e) => set({ riderType: e.target.value || undefined })} /></label>
         <label>Tags (Komma) <input value={draft.tags.join(', ')} onChange={(e) => set({ tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} /></label>
         <div className="wide rt-field"><span className="rt-label">Stärken</span>

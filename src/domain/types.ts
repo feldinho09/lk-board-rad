@@ -31,6 +31,7 @@ export interface Rider extends Versioned {
   nationality?: string; // ISO-3166 alpha-3 oder Freitext, wie importiert
   /** "YYYY" oder "YYYY-MM-DD"; unbekannt bleibt leer (nie erfinden). */
   birthDate?: string;
+  birthPlace?: string;
   riderType?: string;
   strengths?: string;
   bio?: string;
@@ -73,7 +74,9 @@ export interface Edition extends Versioned {
   /** Startnummern-Eindeutigkeit: pro Rennen oder pro Kategorie */
   bibScope: 'rennen' | 'kategorie';
   /** Herkunft der Daten, z. B. "demo" für fiktive Daten */
-  dataOrigin?: 'demo' | 'manuell' | 'pcs';
+  dataOrigin?: 'demo' | 'manuell' | 'pcs' | 'tissot';
+  /** Verknüpfung mit Tissot Timing (Wettbewerbs-Kennung, z. B. "tdf2026") */
+  tissot?: { id: string; code: string; year: number };
   notes?: string;
 }
 

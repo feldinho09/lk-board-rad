@@ -98,6 +98,21 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 | Private Notizen nur bei ausdrücklicher Wahl; Fußzeile warnt dann rot | ✅ | Unit-Test |
 | PDF-Vorschau im Browser | 🟡 | Funktioniert technisch (keine Sicherheitsfehler); im Testbrowser ohne PDF-Anzeige nicht sichtbar prüfbar |
 
+## Ergänzung 0.1.4 – Tissot Timing (automatischer Abruf)
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| Rennen von Tissot wählen, als neues Rennen samt Etappen anlegen oder bestehendes verknüpfen | ✅ | Unit-Tests + e2e |
+| Startliste (mit UCI-ID) über den normalen Prüf-Import | ✅ | Unit-Tests + e2e; echter Lauf Tour de Suisse 2026: 140 Fahrer |
+| Etappenergebnis, Gesamt-, Punkte-, Berg-, Nachwuchs- und Mannschaftswertung holen; zweiter Abruf ohne Änderung erzeugt keine Revision | ✅ | Unit-Tests + e2e; echter Lauf Tour de Suisse 2026 Etappe 5: alle Fahrer zugeordnet, Pogačar 15:08:43, Carapaz +6:32 |
+| Alle Zeitformate lesbar | ✅ | Prüfung gegen 79 Etappen/Rennen 2025–2026 bei Tissot: keine unlesbaren Werte |
+| Ausfälle (DNF/DNS/OTL) übernehmen, nie automatisch zurücksetzen | ✅ | Unit-Tests; echter Lauf: 48 Ausfälle Tour de Suisse 2026 |
+| Fahrerdaten: Geburtsdatum, Geburtsort, Nation, Akzente – nur leere Felder | ✅ | Unit-Tests + e2e; echter Lauf: 140/140 ergänzt in 84 s |
+| Fehlende UCI-IDs nur über eindeutige Namen zuordnen | ✅ | Unit-Test |
+| Automatische Aktualisierung mit Statusanzeige im Kopf, pausiert nach Rennende | ✅ | e2e |
+| Automatische Aktualisierung während einer laufenden Etappe | 🟡 | Logik getestet; ein echter Renntag liegt ausserhalb der Saison noch nicht vor |
+| Live-Zwischenstände während der Etappe (Tissot-Live-Endpunkte) | ⬜ | nicht umgesetzt; ausserhalb der Saison nicht prüfbar |
+
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 
 1. Konfigurierbares Board (Blöcke, Vorlagen) mit Entwurf → Vorschau → Freigabe.

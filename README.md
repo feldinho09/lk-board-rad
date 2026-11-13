@@ -2,7 +2,7 @@
 
 Offline-fähiges Kommentatorenwerkzeug für Radrennen – reine Browser-App, Daten im Browser (IndexedDB), kein KI-Dienst und kein Abo nötig.
 
-**Stand 0.1.0:** lokal nutzbarer Durchstich. Sync-Server und automatischer PCS-Import fehlen noch (siehe `docs/ABNAHMEBERICHT.md`).
+**Stand 0.1.4:** lokal nutzbar, mit automatischem Abruf von Tissot Timing (Startlisten, Ergebnisse, Wertungen, Fahrerdaten; siehe `docs/ARCHITEKTUR.md` Abschnitt 7a). Sync-Server und PCS-Anbindung fehlen noch (siehe `docs/ABNAHMEBERICHT.md`).
 
 ## Starten (Entwicklung)
 

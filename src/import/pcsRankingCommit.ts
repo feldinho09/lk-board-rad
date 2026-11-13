@@ -18,15 +18,20 @@ export interface ResolvedRanking {
   outUpdates: { part: Participation; status: StartStatus }[];
 }
 
-export async function resolveRanking(editionId: string, r: PcsRanking): Promise<ResolvedRanking> {
+/** Zeile einer Quelle (PCS kopiert oder Tissot Timing); uciId wird bevorzugt zugeordnet. */
+export type SourceRow = PcsRanking['rows'][number] & { uciId?: string };
+
+export async function resolveRanking(editionId: string, r: { kind: ClassificationKind; rows: SourceRow[] }): Promise<ResolvedRanking> {
   const parts = alive(await db.participations.where('editionId').equals(editionId).toArray());
   const riders = new Map((await db.riders.bulkGet(parts.map((p) => p.riderId))).filter((x): x is Rider => !!x).map((x) => [x.id, x]));
   const byKey = new Map<string, Participation[]>();
+  const byUci = new Map<string, Participation>();
   for (const p of parts) {
     const rd = riders.get(p.riderId);
     if (!rd) continue;
     const k = nameKey(rd.firstName, rd.lastName);
     byKey.set(k, [...(byKey.get(k) ?? []), p]);
+    for (const e of rd.externalIds) if (e.ns === 'uci' && e.value) byUci.set(e.value, p);
   }
   const unresolved: string[] = [];
   const outUpdates: ResolvedRanking['outUpdates'] = [];
@@ -35,10 +40,12 @@ export async function resolveRanking(editionId: string, r: PcsRanking): Promise<
       rank: x.rank, timeSec: x.timeSec ?? undefined, gapSec: x.gapSec, sameTimeAsPrevious: x.sameTimeAsPrevious,
       points: x.points, status: x.status as StartStatus | undefined, sourceValue: x.sourceValue, prevRank: x.prevRank,
     };
-    if (r.kind === 'team') { row.teamName = x.team; return row; }
+    // Mannschaftswertung – und Mannschaftszeitfahren, bei dem die Quelle Teams statt Fahrer führt
+    if (r.kind === 'team' || (!x.name && !x.uciId && x.team)) { row.teamName = x.team; return row; }
     row.name = x.name;
     const sp = splitFullName(x.name ?? '');
-    const hits = byKey.get(nameKey(sp.first, sp.last)) ?? [];
+    const viaUci = x.uciId ? byUci.get(x.uciId) : undefined;
+    const hits = viaUci ? [viaUci] : byKey.get(nameKey(sp.first, sp.last)) ?? [];
     if (hits.length === 1) {
       row.riderId = hits[0].riderId;
       const st = x.status as StartStatus | undefined;

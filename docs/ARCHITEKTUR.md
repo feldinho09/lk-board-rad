@@ -60,6 +60,32 @@ Umgesetzt wie im Bauplan, Abschnitt 11 (siehe `src/domain/types.ts`). Wichtige P
 
 Push: Outbox-Operationen mit `opId` und Basisrevision; der Server bestätigt dauerhaft, eine erneut gesendete `opId` liefert dasselbe Ergebnis. Pull: Änderungen ab einem serverseitigen Fortschrittsmarker. Konflikte werden feldweise mit Basiswert, lokaler und entfernter Fassung behandelt; fachlich verbundene Felder (Startnummer + Kategorie) werden gemeinsam geprüft. Löschungen laufen über die vorhandenen Löschmarkierungen. Tab-Koordination erfolgt über die Web Locks API, mit BroadcastChannel als Rückfallebene. Nichts davon ist umgesetzt oder getestet.
 
+## 7a Tissot Timing (automatischer Abruf, seit 13. 11. 2026)
+
+**Rechtsgrundlage:** Laut Auskunft des Nutzers (13. 11. 2026) ist das automatische Holen der Daten bei Tissot Timing erlaubt. Die schriftliche Quelle (Link/Mail) wird hier nachgetragen, sobald sie vorliegt. Die allgemeinen Nutzungsbedingungen von tissotwatches.com untersagen Data-Mining; spezifische Bedingungen für tissottiming.com waren nicht auffindbar.
+
+**Quelle:** Die öffentliche Website tissottiming.com lädt ihre Daten als JSON von `https://prod.server.tissottiming.com` (CORS offen). Das LK Board nutzt dieselben Endpunkte direkt aus dem Browser, ohne Server dazwischen:
+
+| Zweck | Endpunkt |
+| --- | --- |
+| Rennen eines Jahres | `/competitions?year=2026` (Strasse: sport `CRD`, Typ `GrandTour`/`SingleRace`) |
+| Etappen | `/competitions/{kürzel}{jahr}/stages` (z. B. `tdf2026`) |
+| Startliste mit UCI-ID und Status (OK/DNF/DNS/OTL) | `/competitions/{id}/stages/{n}/teams` |
+| Etappenergebnis bzw. Gesamtstände nach der Etappe | `/competitions/{id}/stages/{n}/rankings/stage` bzw. `/overall` |
+| Fahrer: Vor-/Nachname mit Akzenten, Geburtsdatum, Geburtsort | `/athletes/infos/{uciId}/{id}/0` |
+
+Nicht genutzt (noch): Live-Endpunkte während der Etappe (`/live`, `/liverankings`, SignalR), Timeline (Sprint-/Bergwertungen unterwegs), Palmarès (`/athletes/palmares/{uciId}`), Weltmeisterschaften (`/events`/`phases`). Die Live-Endpunkte liessen sich ausserhalb der Saison nicht prüfen.
+
+**Abdeckung (geprüft 13. 11. 2026, alle Werte lesbar):** 2025 und 2026 Paris–Nice, Critérium du Dauphiné / Tour Auvergne-Rhône-Alpes, Tour de Romandie, Tour de Suisse (Männer/Frauen), Tour de France (Männer/Frauen), Vuelta (Männer/Frauen), Deutschland Tour, Paris–Roubaix, Flèche Wallonne, Liège–Bastogne–Liège (je Männer/Frauen), Eschborn–Frankfurt, Paris–Tours.
+
+**Regeln:**
+- Startlisten laufen durch den normalen Prüf-Import (Abgleich, Bestätigung, Rücknahme, Wiederherstellungspunkt).
+- Wertungen: jede inhaltlich neue Fassung = neue Quellrevision; unveränderte Daten erzeugen keine Revision. Zuordnung zuerst über UCI-ID, dann eindeutigen Namen; Rest bleibt mit Quellnamen erhalten.
+- Ausfälle werden nur Richtung „ausgeschieden“ übernommen, nie automatisch zurück auf „aktiv“.
+- Fahrerdaten: nur leere Felder; Akzent-Schreibweise nur bei sonst identischem Namen (alte Schreibweise wird Aliasname).
+- Schonend: Anfragen streng nacheinander, ≥ 350 ms Abstand, ohne Cookies/Referrer. Automatische Aktualisierung nur auf Wunsch, alle 2–15 Minuten, nur für das verknüpfte Rennen, pausiert 36 h nach Start der letzten Etappe; bei Fehlern verlängert sich das Intervall bis 30 Minuten.
+- Zeiten: Tissot schreibt je nach Rennen `16:32:07`, `4:59:39"`, `21:47''`, `15h08'43"`, `06'32"`, `28`; `' '` = gleiche Zeit; negative Rückstände kommen vor. Alle Varianten werden gelesen und als Originalwert zusätzlich gespeichert.
+
 ## 8 Verbesserungsvorschläge zum Bauplan
 
 1. **Zwei getrennte Zeitstempel je Wertung**: „fachlicher Stand“ (nach Etappe X) und „Abrufzeit“. Das ist umgesetzt, sollte aber im Bauplan als Pflichtfeld stehen.

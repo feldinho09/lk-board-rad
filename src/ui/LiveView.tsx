@@ -235,7 +235,7 @@ function RiderCard({ edition, parts, riders, stage, stages, standings, riderId, 
         <span className="big-bib">{p?.bib ?? '—'}</span>
         <div>
           <h2 className="rider-name">{p?.overrides.displayName ?? r.displayName}</h2>
-          <div className="team-line">{p?.teamName ?? '–'} · {r.nationality ?? '–'}{age ? ` · ${age} J.` : ''}</div>
+          <div className="team-line">{p?.teamName ?? '–'} · {r.nationality ?? '–'}{age ? ` · ${age} J.` : ''}{r.birthPlace ? ` · geb. in ${r.birthPlace}` : ''}</div>
         </div>
         <div className="card-actions">
           <button onClick={() => app.togglePin(riderId)} aria-pressed={pinned} title="Anheften (P)">{pinned ? 'Lösen' : 'Anheften'}</button>

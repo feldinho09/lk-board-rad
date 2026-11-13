@@ -18,6 +18,7 @@ import { EmergencyView } from './EmergencyView';
 import { createRestorePoint } from '../backup/archive';
 import { DialogHost, confirmDialog } from './dialogs';
 import { IS_ARTIFACT } from './host';
+import { TissotBadge, useTissotAutoSync } from './TissotPanel';
 
 export function App() {
   return (
@@ -70,6 +71,7 @@ function Shell() {
   }, []);
 
   useAutoRestorePoints();
+  useTissotAutoSync();
 
   if (!app.ready) return <div className="loading">Lade lokalen Datenbestand …</div>;
   if (app.storageError) return (
@@ -173,6 +175,7 @@ function Header({ page, go, onSearch, onHelp }: { page: string; go: (p: string) 
       {live && <nav className="nav"><a href="#live" className={page === 'live' ? 'active' : ''}>Live</a><a href="#export" className={page === 'export' ? 'active' : ''}>PDF</a><a href="#check" className={page === 'check' ? 'active' : ''}>Bereitschaft</a></nav>}
       <div className="status">
         <SaveIndicator />
+        <TissotBadge />
         <span className="badge" title="Lokale Änderungen, die noch nicht mit einem Server abgeglichen wurden. Kein Server konfiguriert = normaler rein lokaler Betrieb.">
           Sync: kein Server · {pending} lokal
         </span>

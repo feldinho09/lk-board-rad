@@ -58,7 +58,7 @@ try {
   await page.getByLabel('Name').first().fill('Testkriterium 2026');
   await page.getByRole('button', { name: 'Anlegen' }).click();
   await page.goto(URL + '#import');
-  await page.locator('fieldset select').first().selectOption({ label: 'Testkriterium 2026' });
+  await page.locator('fieldset:not(.tissot) select').first().selectOption({ label: 'Testkriterium 2026' });
   const csv = 'Nr\tVorname\tNachname\tTeam\tNation\n007\tLars\tØvrebø\tNordlys Cycling\tNOR\n12\tLuca\tBianchi\tSquadra Fiume\tITA\n13\tNeu\tFahrerin\tTeam X\tSUI\n';
   await page.getByPlaceholder(/Aus Excel/).fill(csv);
   await page.getByRole('button', { name: 'Eingefügte Tabelle laden' }).click();
@@ -87,7 +87,7 @@ try {
   await page.getByLabel('Name').first().fill('Link-Rennen');
   await page.getByRole('button', { name: 'Anlegen' }).click();
   await page.goto(URL + '#/import');
-  await page.locator('fieldset select').first().selectOption({ label: 'Link-Rennen' });
+  await page.locator('fieldset:not(.tissot) select').first().selectOption({ label: 'Link-Rennen' });
   await page.getByLabel('Link zur Startliste').fill('https://www.procyclingstats.com/race/x/2026/startlist');
   await page.getByRole('button', { name: 'Link laden' }).click();
   const pcsMsg = await page.locator('.banner.err').textContent();
@@ -117,7 +117,7 @@ try {
   await page.getByLabel('Name').first().fill('PCS-Kopie-Rennen');
   await page.getByRole('button', { name: 'Anlegen' }).click();
   await page.goto(URL + '#import');
-  await page.locator('fieldset select').first().selectOption({ label: 'PCS-Kopie-Rennen' });
+  await page.locator('fieldset:not(.tissot) select').first().selectOption({ label: 'PCS-Kopie-Rennen' });
   await page.getByPlaceholder(/Aus Excel/).fill(pcsPaste);
   await page.getByRole('button', { name: 'Eingefügte Tabelle laden' }).click();
   const pcsBanner = await page.locator('text=ProCyclingStats-Startliste erkannt').locator('..').textContent();
@@ -144,7 +144,7 @@ try {
     'Race information', 'Pageload 0.02s'].join('\r\n');
   const pasteRanking = async (gap) => {
     await page.goto(URL + '#import');
-    await page.locator('fieldset select').first().selectOption({ label: 'PCS-Kopie-Rennen' });
+    await page.locator('fieldset:not(.tissot) select').first().selectOption({ label: 'PCS-Kopie-Rennen' });
     await page.getByPlaceholder(/Aus Excel/).fill(rankText(gap));
     await page.getByRole('button', { name: 'Eingefügte Tabelle laden' }).click();
     await page.waitForSelector('text=ProCyclingStats-Rangliste (manuell kopiert)');
@@ -438,7 +438,7 @@ try {
   await page.getByLabel('Name').first().fill('Offline-Rennen');
   await page.getByRole('button', { name: 'Anlegen' }).click();
   await page.goto(URL + '#import');
-  await page.locator('fieldset select').first().selectOption({ label: 'Offline-Rennen' });
+  await page.locator('fieldset:not(.tissot) select').first().selectOption({ label: 'Offline-Rennen' });
   await page.getByPlaceholder(/Aus Excel/).fill('Nr;Name;Team\n1;SZYMAŃSKA Ewa;Team Offline\n');
   await page.getByRole('button', { name: 'Eingefügte Tabelle laden' }).click();
   await page.getByRole('button', { name: /Abgleichen/ }).click();
@@ -470,7 +470,7 @@ try {
   await page.getByLabel('Name').first().fill('PDF-Rennen');
   await page.getByRole('button', { name: 'Anlegen' }).click();
   await page.goto(URL + '#/import');
-  await page.locator('fieldset select').first().selectOption({ label: 'PDF-Rennen' });
+  await page.locator('fieldset:not(.tissot) select').first().selectOption({ label: 'PDF-Rennen' });
   await page.locator('input[type=file]').setInputFiles('src/import/fixtures/startliste-teambloecke.pdf');
   await page.waitForSelector('text=Aus dem PDF erkannte Tabelle', { timeout: 15000 });
   await page.screenshot({ path: `${screens}/pdf-pruefung.png`, fullPage: true });
@@ -526,6 +526,64 @@ try {
   await page.waitForSelector('text=Wiederhergestellt');
   const restored = await page.evaluate(async () => ({ riders: await window.__lk.db.riders.count(), editions: await window.__lk.db.editions.count(), standings: (await window.__lk.db.standings.toArray()).filter((s) => s.source.startsWith('PCS')).length }));
   check(13, 'Offline-Wiederherstellung aus Archiv in geleertem Bestand', restored.riders > 50000 && restored.editions === 4 && restored.standings >= 2, JSON.stringify(restored));
+
+  // Tissot Timing: Abruf mit echten (gekürzten) Tissot-Antworten aus den Test-Fixtures
+  await ctx.setOffline(false);
+  const fxDir = 'src/import/fixtures/tissot/';
+  const fxr = (n) => readFileSync(fxDir + n, 'utf8');
+  const tissotHits = [];
+  await page.route('https://prod.server.tissottiming.com/**', (route) => {
+    const u = new globalThis.URL(route.request().url());
+    tissotHits.push(u.pathname + u.search);
+    const map = {
+      '/competitions?year=2026': 'competitions-2026.json',
+      '/competitions/tdf2026/stages': 'tdf2026-stages.json',
+      '/competitions/tdf2026/stages/5/teams': 'tdf2026-s5-teams.json',
+      '/competitions/tdf2026/stages/1/teams': 'tdf2026-s5-teams.json',
+      '/competitions/tdf2026/stages/5/rankings/stage': 'tdf2026-s5-stage.json',
+      '/competitions/tdf2026/stages/5/rankings/overall': 'tdf2026-s5-overall.json',
+      '/athletes/infos/10014972740/tdf2026/0': 'athlete-pogacar.json',
+    };
+    const f = map[u.pathname + u.search];
+    return route.fulfill(f
+      ? { status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: fxr(f) }
+      : { status: 404, headers: { 'access-control-allow-origin': '*' }, body: '' });
+  });
+  await page.goto(URL + '#import');
+  const tp = page.locator('fieldset.tissot');
+  await tp.locator('select').first().selectOption('2026');
+  await tp.getByRole('button', { name: 'Rennen von Tissot laden' }).click();
+  await tp.locator('select').nth(1).selectOption('tdf');
+  await tp.getByRole('button', { name: 'Als neues Rennen anlegen' }).click();
+  await page.waitForSelector('text=Verknüpft mit');
+  await tp.locator('select').first().selectOption('5');
+  await tp.getByRole('button', { name: /Startliste laden/ }).click();
+  await page.waitForSelector('text=8 Fahrer in 2 Teams');
+  await page.getByRole('button', { name: '3 · Abgleichen' }).click();
+  await page.getByRole('button', { name: /Bestätigte Zeilen übernehmen/ }).click();
+  await page.waitForSelector('text=Import gespeichert');
+  await tp.getByRole('button', { name: 'Ergebnisse und Wertungen holen' }).click();
+  await page.waitForSelector('text=neu gespeichert (Revision 1)');
+  await tp.getByRole('button', { name: 'Ergänzen' }).click();
+  await page.waitForSelector('text=Profile ergänzt');
+  await tp.getByLabel(/Automatisch aktualisieren/).click();
+  await page.waitForFunction(() => document.querySelector('fieldset.tissot input[type=checkbox]:checked + strong, fieldset.tissot label.confirm input:checked') !== null);
+  await page.screenshot({ path: `${screens}/tissot.png`, fullPage: true });
+  const tt = await page.evaluate(async () => {
+    const { db } = window.__lk;
+    const ed = (await db.editions.toArray()).find((e) => e.tissot?.id === 'tdf2026');
+    const st = (await db.standings.toArray()).filter((s) => s.editionId === ed.id);
+    const pog = (await db.riders.toArray()).find((r) => r.externalIds.some((x) => x.value === '10014972740'));
+    const gc = st.find((s) => s.kind === 'gc');
+    return { name: ed.name, stages: (await db.stages.where('editionId').equals(ed.id).count()), kinds: st.map((s) => s.kind).sort().join(','), src: gc.source, pogRow: gc.rows.find((r) => r.riderId === pog.id), pog: [pog.displayName, pog.birthDate, pog.birthPlace] };
+  });
+  await page.waitForFunction(() => /Tissot \d\d:\d\d/.test(document.querySelector('.status')?.textContent ?? ''), null, { timeout: 15000 });
+  const badge = await page.locator('.status .badge:has-text("Tissot")').textContent();
+  const autoMsg = await page.evaluate(async () => (await window.__lk.db.device.get('tissotAutoState'))?.value?.message);
+  check('Tissot', 'Tissot Timing: Rennen anlegen, Startliste prüfen und übernehmen, alle Wertungen holen, Fahrerdaten mit Akzenten, Auto-Aktualisierung',
+    tt.name === 'Tour de France 2026' && tt.stages === 6 && tt.kinds === 'berg,etappe,gc,nachwuchs,punkte,team' && tt.src === 'Tissot Timing' && tt.pogRow?.rank === 4 && tt.pogRow?.gapSec === 473
+      && tt.pog.join('|') === 'Tadej Pogačar|1998-09-21|Komenda' && /Tissot \d\d:\d\d/.test(badge),
+    `${JSON.stringify(tt)} · ${badge}: ${autoMsg} · ${tissotHits.length} Abrufe`);
 } catch (e) {
   check('!', 'Unerwarteter Abbruch', false, String(e && e.stack || e));
   await page.screenshot({ path: `${screens}/fehler.png` }).catch(() => {});

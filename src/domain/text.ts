@@ -53,7 +53,7 @@ export function formatDuration(sec: number | null | undefined): string {
 export function formatGap(sec: number | null | undefined): string {
   if (sec == null) return '–';
   if (sec === 0) return 'gl. Zeit';
-  return '+' + formatDuration(sec);
+  return (sec < 0 ? '−' : '+') + formatDuration(sec);
 }
 
 export function formatClock(iso: string | undefined): string {

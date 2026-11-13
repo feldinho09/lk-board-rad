@@ -13,6 +13,7 @@ import { pdfToMatrix, type PdfMode, type PdfTextItem } from '../import/pdfLayout
 import { loadFromLink } from '../import/link';
 import { parsePcsStartlist, pcsStartlistToMatrix, parsePcsRanking, type PcsStartlist, type PcsRanking } from '../import/pcsPaste';
 import { PcsRankingPanel } from './PcsRankingPanel';
+import { TissotPanel } from './TissotPanel';
 import { useApp } from './state';
 
 const IMPORT_TEMPLATE = '\uFEFFStartnummer;Vorname;Nachname;Team;Kategorie;Nation;Geburtsdatum;UCI-ID;PCS-Kennung\r\n001;Vorname;Nachname;Teamname;Elite;SUI;1999-04-12;;\r\n002;Zweiter;Fahrer;Teamname;Elite;GER;2001;;\r\n';
@@ -145,13 +146,14 @@ export function ImportView() {
     <div className="page">
       <h1>Startliste importieren</h1>
       <p className="muted">CSV, XLSX, PDF, Link oder eingefügte Tabelle. Jede Zeile wird geprüft; nichts wird ungefragt in Fahrerprofile geschrieben. Vor jedem Import entsteht automatisch ein Wiederherstellungspunkt. <button className="link" onClick={() => saveFile(IMPORT_TEMPLATE, 'lk-board-importvorlage.csv', 'text/csv')}>Importvorlage (CSV)</button></p>
+      {!IS_ARTIFACT && <TissotPanel editionId={editionId} onStartlist={(m, name) => { reset(); useMatrices({ [name]: m }, name); }} />}
       <fieldset
         className={`form ${dragOver ? 'drop' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void loadFile(f); }}
       >
-        <legend>1 · Ziel und Quelle</legend>
+        <legend>1 · Ziel und Quelle (Datei, Link, Einfügen)</legend>
         <label>Rennen
           <select value={editionId} onChange={(e) => { setEditionId(e.target.value); reset(); }}>
             <option value="">– wählen –</option>
