@@ -186,7 +186,7 @@ function Header({ page, go, onSearch, onHelp }: { page: string; go: (p: string) 
             {sw.controlled ? 'Offline bereit' : 'Offline nicht bereit'}
           </span>
         )}
-        {sw.updateWaiting && !live && <button className="badge warn" onClick={applyUpdate}>Update bereit – neu laden</button>}
+        {sw.updateWaiting && !live && <button className="badge warn update-ready" onClick={applyUpdate} title="Lädt die neue Version. Deine Daten bleiben erhalten.">Neue Version – jetzt laden</button>}
         {sw.updateWaiting && live && <span className="badge" title="Wird nach Live angeboten">Update vorbereitet</span>}
         <select aria-label="Darstellung" value={app.theme} onChange={(e) => app.setTheme(e.target.value as never)} className="small">
           <option value="dunkel">Dunkel</option><option value="hell">Hell</option><option value="kontrast">Hoher Kontrast</option>

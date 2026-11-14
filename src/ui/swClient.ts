@@ -36,6 +36,11 @@ export function registerServiceWorker(): void {
           }
         });
       });
+      // Auch bei lange offenem Tab regelmässig nach einer neuen Version sehen
+      const check = () => { if (navigator.onLine) reg.update().catch(() => undefined); };
+      setInterval(check, 15 * 60_000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+      window.addEventListener('online', check);
       return navigator.serviceWorker.ready;
     })
     .then(() => emit({ controlled: true }))
