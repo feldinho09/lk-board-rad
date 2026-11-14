@@ -134,6 +134,14 @@ Bekannte Grenze der Erkennung: ungewöhnliche Layouts (z. B. Name vor Nummer, Te
 | Anzeige in Profil, Fahrerkarte (Details) und PDF-Export | ✅ | Typprüfung, e2e |
 | Kein automatischer PCS-Abruf (Nutzungsbedingungen) | ✅ | nur Link zur PCS-Seite; Kopieren macht der Nutzer |
 
+## Ergänzung 0.1.7 – „Alle aktualisieren“
+
+| Prüfung | Stand | Nachweis |
+| --- | --- | --- |
+| Ein Knopf in „Fahrer“: Tissot (Fahrerdaten aller verknüpften Rennen, Palmarès aller Fahrer mit UCI-ID) und Wikipedia für alle Fahrer | ✅ | Unit-Test + e2e |
+| Wikipedia schonend: nur wo etwas fehlt, je Fahrer höchstens alle 30 Tage, max. 1000 Fahrer pro Klick, Fahrer aus Rennen zuerst | ✅ | Unit-Test; e2e mit 50 030 Fahrern (1000 abgefragt, Rest als „noch offen“ gemeldet) |
+| ProCyclingStats nicht automatisch (Nutzungsbedingungen, Ziffer (f): keine automatisierten Werkzeuge) – Anfrage um schriftliche Erlaubnis entworfen | ⬜ | wartet auf Antwort von PCS |
+
 ## Nicht umgesetzt (nächste Schritte, Etappe B → C)
 
 1. Konfigurierbares Board (Blöcke, Vorlagen) mit Entwurf → Vorschau → Freigabe.

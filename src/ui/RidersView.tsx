@@ -9,6 +9,7 @@ import { WikidataPanel } from './WikidataPanel';
 import { TissotPalmaresPanel } from './TissotPanel';
 import { PalmaresList } from './PalmaresView';
 import { CareerInfo, PcsRiderPastePanel } from './PcsRiderPanel';
+import { RefreshAllPanel } from './RefreshAllPanel';
 import { IS_ARTIFACT } from './host';
 import { useApp } from './state';
 import { confirmDialog } from './dialogs';
@@ -45,6 +46,7 @@ function RiderList() {
         <label><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Archivierte</label>
         <button onClick={create}>+ Fahrer</button>
       </div>
+      {!IS_ARTIFACT && <RefreshAllPanel />}
       <WikidataPanel />
       {!IS_ARTIFACT && <TissotPalmaresPanel />}
       <details className="panel">

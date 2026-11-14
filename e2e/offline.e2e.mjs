@@ -600,6 +600,14 @@ try {
   check('PCS', 'PCS-Fahrerseite einfügen: Grösse/Gewicht, Teams, Top-Ergebnisse, Familie; Geburtsort und Schlüsselfakten bleiben (waren schon gefüllt)',
     pcsR.h === 176 && pcsR.w === 66 && pcsR.place === 'Komenda' && pcsR.teams === 3 && pcsR.top === '2× Sieg Testrennen (2024, 2025)' && pcsR.wins === 12 && pcsR.fam === 'Tilen Pogačar (Bruder)' && /^Gesamtsieg Tour de France/.test(pcsR.facts),
     JSON.stringify(pcsR));
+
+  // „Alle aktualisieren“ (Tissot über Fixtures; Wikipedia wird im Test blockiert → klare Meldung, kein Absturz)
+  await page.route('https://www.wikidata.org/**', (route) => route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: '{"search":[]}' }));
+  await page.goto(URL + '#fahrer');
+  await page.getByRole('button', { name: 'Alle aktualisieren' }).click();
+  await page.waitForSelector('text=Fertig.', { timeout: 60000 });
+  const ra = await page.locator('.refresh-all .banner').first().textContent();
+  check('Aktualisieren', '„Alle aktualisieren“ holt Tissot und Wikipedia für alle Fahrer und meldet das Ergebnis', /Tissot: \d+ Palmarès/.test(ra) && /Wikipedia: 1000 Fahrer nachgeschlagen, 0 Profile ergänzt/.test(ra) && /Noch \d+ offen/.test(ra), ra);
 } catch (e) {
   check('!', 'Unerwarteter Abbruch', false, String(e && e.stack || e));
   await page.screenshot({ path: `${screens}/fehler.png` }).catch(() => {});

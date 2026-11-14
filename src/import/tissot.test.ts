@@ -13,6 +13,7 @@ import {
   convertRanking, fetchStageRankings, kindOf, latestStartedStage, listRoadRaces, parseTissotTime, splitTissotName,
   stageFromTissot, statusesFromTeams, teamsToMatrix, tissotDate, type JsonFetcher, type TtRanking, type TtStage, type TtTeam,
 } from './tissot';
+import { refreshAllRiders } from './refreshAll';
 import { applyAthlete, createEditionFromTissot, enrichRidersByUci, enrichRidersFromTissot, syncTissotStage } from './tissotCommit';
 import type { Rider } from '../domain/types';
 
@@ -260,5 +261,27 @@ describe('Tissot – Übernahme ins LK Board', () => {
     const again = await enrichRidersByUci(alive(await db.riders.toArray()), null, { birthDates: false, places: false, accents: false, nationality: false, palmares: true, keyFacts: true }, undefined, f);
     expect(again.updated).toBe(0);
     expect((await db.riders.get(pog.id))!.keyFacts).toEqual(['Eigener Fakt']);
+  });
+
+  it('„Alle aktualisieren“: Tissot-Daten für alle; Wikipedia ohne Treffer ändert nichts', async () => {
+    const { f } = await setup();
+    const wiki = async () => ({ search: [] });
+    const phases = new Set<string>();
+    const r = await refreshAllRiders({ tissot: true, wikipedia: true }, (p) => phases.add(p.split(':')[0]), { tissot: f, wiki });
+    expect(r.riders).toBe(8);
+    expect(r.tissot).toMatchObject({ profiles: 1, palmares: 1, withoutUci: 0 });
+    expect(r.wikipedia).toMatchObject({ updated: 0, notFound: 8, checked: 8, skippedRecent: 0, remaining: 0 });
+    // innerhalb von 30 Tagen nicht nochmals nachschlagen
+    const w2 = await refreshAllRiders({ tissot: false, wikipedia: true }, undefined, { wiki });
+    expect(w2.wikipedia).toMatchObject({ checked: 0, skippedRecent: 8 });
+    expect(r.errors).toEqual([]);
+    expect([...phases]).toEqual(expect.arrayContaining(['Tissot', 'Wikipedia']));
+    const pog = alive(await db.riders.toArray()).find((x) => x.externalIds.some((e) => e.value === '10014972740'))!;
+    expect(pog).toMatchObject({ lastName: 'Pogačar', birthDate: '1998-09-21' });
+    expect(pog.palmares!.length).toBeGreaterThan(300);
+    expect(await db.restorePoints.count()).toBeGreaterThan(0);
+    // zweiter Lauf: nichts mehr zu tun
+    const again = await refreshAllRiders({ tissot: true, wikipedia: false }, undefined, { tissot: f });
+    expect(again.tissot).toMatchObject({ profiles: 0, palmares: 0 });
   });
 });
