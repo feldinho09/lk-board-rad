@@ -11,9 +11,12 @@ import { LiveView } from './LiveView';
 import { PdfView } from './PdfView';
 import { BackupView } from './BackupView';
 import { SearchDialog } from './SearchDialog';
+import { ProgramView } from './ProgramView';
+import { GeoView } from './GeoView';
+import { ThemeToggle } from './theme';
 
 const TABS = [
-  ['live', 'LIVE'], ['fahrer', 'Fahrer'], ['rennen', 'Rennen'], ['themen', 'Themen'], ['pdf', 'PDF'], ['sicherung', 'Sicherung'],
+  ['live', 'LIVE'], ['fahrer', 'Fahrer'], ['rennen', 'Rennen'], ['themen', 'Themen'], ['programm', 'SRF-Programm'], ['geo', 'Geographisches'], ['pdf', 'PDF'], ['sicherung', 'Sicherung'],
 ] as const;
 
 export function App() {
@@ -33,6 +36,8 @@ export function App() {
       {route.view === 'fahrer' && <RidersView id={route.id} />}
       {route.view === 'rennen' && <RacesView id={route.id} />}
       {route.view === 'themen' && <TopicsView id={route.id} />}
+      {route.view === 'programm' && <ProgramView />}
+      {route.view === 'geo' && <GeoView />}
       {route.view === 'pdf' && <PdfView />}
       {route.view === 'sicherung' && <BackupView />}
       {search && <SearchDialog onClose={() => setSearch(false)} />}
@@ -63,6 +68,7 @@ function Header({ view, onSearch }: { view: string; onSearch: () => void }) {
         )}
         <button className="btn small" onClick={onSearch} title="Suche (Strg K)">Suche <kbd className="muted small">Strg K</kbd></button>
         <span className="grow" />
+        <ThemeToggle />
         {save.kind === 'ok' && <span className="badge ok" title={`Zuletzt gespeichert ${new Date(save.at).toLocaleTimeString('de-CH')}`}>✓ Gespeichert</span>}
         {save.kind === 'error' && <span className="badge err" role="alert" title={save.message}>Speichern fehlgeschlagen</span>}
         <span className={`badge ${sw.controlled ? 'ok' : ''}`} title="Startet auch ohne Internet">{sw.controlled ? 'Offline bereit' : 'Offline noch nicht bereit'}</span>

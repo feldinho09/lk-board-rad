@@ -18,8 +18,12 @@ Stand: 15. November 2026. Geprüft mit Chromium (Playwright, headless) gegen den
 | PDF mit wählbaren Inhalten | ✅ | Unit (Inhalt) + Browser (Datei) |
 | Sicherung herunterladen, prüfen, wiederherstellen; Wiederherstellungspunkte | ✅ | Unit + Browser |
 | Start ohne Internet mit allen Daten | ✅ | Browser |
+| SRF-Programm: Tabelle einfügen (mit/ohne Kopfzeile), Zeiten aus Dauern, laufende Zeile, Ablauf übernehmen, verschieben | ✅ | Unit + Browser |
+| Geographisches: GPX, Höhenprofil, Wikipedia-Orte nach km to go (Abruf im Browsertest simuliert), Ausblenden bleibt, Sicherung enthält Strecke und Punkte | ✅ | Unit + Browser |
+| Hell-Ansicht: umschalten, bleibt nach Neuladen | ✅ | Browser |
 | Keine Programmfehler im Browser während des ganzen Ablaufs | ✅ | Browser |
 
 Offen bzw. nicht geprüft:
+- Wikipedia-Abruf im Browsertest simuliert; echter Abruf manuell an einer Strecke Lausanne–Aigle geprüft.
 - Darstellung in Firefox und Safari (Hauptbrowser ist Chrome/Edge).
 - Echte, vollständige PCS-Kopien sind nur lokal geprüft; im Repository liegen erfundene Beispiele im PCS-Aufbau.

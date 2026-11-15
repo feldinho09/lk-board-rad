@@ -112,10 +112,13 @@ export async function saveRaceSection(id: string, key: RaceSectionKey, html: str
 }
 
 export async function deleteRace(id: string): Promise<void> {
-  await mutate(['races', 'stages', 'entries'], async (w) => {
+  await mutate(['races', 'stages', 'entries', 'routes', 'geo', 'rundown'], async (w) => {
     await w.remove('races', id);
     for (const s of alive(await db.stages.where('raceId').equals(id).toArray())) await w.remove('stages', s.id);
     for (const e of alive(await db.entries.where('raceId').equals(id).toArray())) await w.remove('entries', e.id);
+    for (const t of ['routes', 'geo', 'rundown'] as const) {
+      for (const x of alive(await db.table(t).toArray()) as { id: string; raceId: string; deleted?: boolean }[]) if (x.raceId === id) await w.remove(t, x.id);
+    }
   });
 }
 

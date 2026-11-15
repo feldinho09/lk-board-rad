@@ -36,6 +36,8 @@ Vorbild für Gestaltung und Bedienung ist das MotoGP Command Center des Nutzers.
   - Mitte die Fahrerkarte (★-Zeilen zuoberst, danach Aktuell, Themen, Erfolge …),
   - rechts Etappe, Rennabschnitte und Themen.
   - Tastatur: Eine Ziffer sucht die Startnummer, ein Buchstabe oder `/` sucht den Namen.
+- **SRF-Programm:** Sendeablauf pro Etappe als Tabelle (Zeit, Dauer, Element, Inhalt, Wer, erledigt). Einfügen aus Excel/Word (Tab-getrennt, Spalten über die Kopfzeile erkannt), Zeiten aus Dauern fortschreiben, Ablauf einer anderen Etappe übernehmen, Summe gegen das Sendefenster. LIVE zeigt „JETZT“ und „DANACH“ mit Countdown.
+- **Geographisches:** GPX-Strecke pro Etappe (alle 100 m, km ab Start), Höhenprofil mit Achse in km to go, eigene Notizen zur Region. Orte, Sehenswürdigkeiten und Natur entlang der Strecke über die Wikipedia-Geosuche (alle 4 km, Radius 5 km), eingeordnet, ausgedünnt (n pro 10 km) und mit Kurzfassung; sortiert nach km to go. Eigene Punkte (Anstieg, Sprint, Verpflegung …) dazu. Ausgeblendete Wikipedia-Punkte bleiben bei erneutem Abruf ausgeblendet. LIVE zeigt die nächsten Punkte zum eingegebenen km-to-go-Stand.
 - **Suche** (Strg K): über Fahrer (auch in den Texten), Rennen und Themen.
 - **PDF:** Rennabschnitte, Etappen, Startliste, Profile mit gewählten Abschnitten und Themen, jeweils wählbar.
 - **Sicherung:**
@@ -55,6 +57,8 @@ Leuchtstifte (Farben wie MotoGP, Bedeutungen für den Radsport):
 | Blau | Statistik |
 | Rot | Sturz / Ausfall |
 | Orange | Hintergrund |
+
+**Hell/Dunkel:** Umschalter oben rechts, pro Browser gemerkt. Akzent als Schrift in Hell #8a5a00 (Kontrast 5.9:1), da das MotoGP-Gelb auf Weiss nur 1.5:1 erreicht. Leuchtstifte: Text auf Leuchtstift 10–14:1, Leuchtstift gegen Dunkel ≥ 8:1; gegen Weiss nur 1.2–1.8:1, deshalb in Hell zusätzlich eine farbige Unterkante.
 
 **Stern:** „★“ am Anfang einer Zeile oder eines Listenpunkts holt diese Zeile in LIVE nach oben und hebt sie hervor (siehe `splitStarred`).
 

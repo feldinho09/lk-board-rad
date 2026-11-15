@@ -84,6 +84,10 @@ export interface Stage extends Versioned {
   distanceKm?: number;
   profile?: 'flach' | 'huegelig' | 'bergankunft' | 'berg' | 'ezf' | 'mzf' | 'kopfsteinpflaster' | 'sonstiges';
   notes?: RichText;
+  /** Geographisches: Landschaft, Region, Verlauf */
+  geoNotes?: RichText;
+  /** SRF-Programm: Sendungstitel, Sender, Sendezeit */
+  broadcast?: { title?: string; channel?: string; start?: string; end?: string; notes?: string };
 }
 
 export const STATUS_LABEL = { aktiv: 'im Rennen', dns: 'nicht gestartet', dnf: 'aufgegeben', otl: 'Zeitlimit', dsq: 'disqualifiziert' } as const;
@@ -125,6 +129,68 @@ export interface Topic extends Versioned {
   source?: string;
   /** In LIVE hervorheben */
   starred?: boolean;
+}
+
+/** Strecke einer Etappe (aus GPX), gleichmässig ausgedünnt; km ab Start */
+export interface Route extends Versioned {
+  raceId: string;
+  stageNumber: number;
+  /** [Breite, Länge, Höhe m, km ab Start] */
+  points: [number, number, number | null, number][];
+  lengthKm: number;
+  fileName?: string;
+  /** Sprache der Wikipedia-Abfrage */
+  wikiLang?: string;
+}
+
+export const GEO_KINDS = [
+  { key: 'ort', label: 'Ort' },
+  { key: 'sehenswuerdigkeit', label: 'Sehenswürdigkeit' },
+  { key: 'natur', label: 'Natur (Berg, See, Fluss)' },
+  { key: 'anstieg', label: 'Anstieg' },
+  { key: 'sprint', label: 'Sprint / Bonus' },
+  { key: 'verpflegung', label: 'Verpflegung' },
+  { key: 'sonstiges', label: 'Sonstiges' },
+] as const;
+export type GeoKind = (typeof GEO_KINDS)[number]['key'];
+
+/** Punkt an der Strecke: Ort, Sehenswürdigkeit, Anstieg … mit km ab Start */
+export interface GeoPoint extends Versioned {
+  raceId: string;
+  stageNumber: number;
+  kind: GeoKind;
+  name: string;
+  /** km ab Start; km to go = Etappenlänge − km */
+  km: number;
+  /** Abstand zur Strecke in m (bei Wikipedia-Funden) */
+  offsetM?: number;
+  lat?: number;
+  lon?: number;
+  wikiLang?: string;
+  wikiTitle?: string;
+  description?: string;
+  summary?: string;
+  notes?: RichText;
+  starred?: boolean;
+  /** ausgeblendet (bleibt erhalten, damit ein neuer Abruf ihn nicht wieder einfügt) */
+  hidden?: boolean;
+  source: 'wikipedia' | 'eigen';
+}
+
+/** Sendeablauf (SRF-Programm) je Etappe */
+export interface RundownRow extends Versioned {
+  raceId: string;
+  stageNumber: number;
+  order: number;
+  /** Uhrzeit „14:05“ */
+  time?: string;
+  /** Dauer in Minuten */
+  durationMin?: number;
+  /** Element, z. B. „Opener“, „Live Strecke“, „Interview“ */
+  item: string;
+  content?: string;
+  who?: string;
+  done?: boolean;
 }
 
 export interface RestorePoint {

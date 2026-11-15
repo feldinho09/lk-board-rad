@@ -70,7 +70,7 @@ export function TopicCards({ topics, activeId }: { topics: Topic[]; activeId?: s
         <a key={t.id} href={`#themen-${t.id}`} className={`card ${t.id === activeId ? 'on' : ''}`} style={{ color: 'inherit', textDecoration: 'none', display: 'block' }}>
           <div className="row" style={{ gap: 6 }}>
             <span className={`kind ${t.kind}`}>{kindLabel(t.kind)}</span>
-            {t.starred && <span style={{ color: 'var(--flag)' }} title="In LIVE hervorgehoben">★</span>}
+            {t.starred && <span style={{ color: 'var(--accent)' }} title="In LIVE hervorgehoben">★</span>}
             <span className="grow" />
             {t.raceId && names?.races.get(t.raceId) && <span className="muted small">{names.races.get(t.raceId)}{t.stageNumber != null ? ` · Etappe ${t.stageNumber}` : ''}</span>}
           </div>

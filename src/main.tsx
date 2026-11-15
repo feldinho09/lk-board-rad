@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
 import { registerServiceWorker } from './ui/swClient';
 import './ui/styles.css';
+import { applyTheme, readTheme } from './ui/theme';
+
+applyTheme(readTheme());
 
 registerServiceWorker();
 

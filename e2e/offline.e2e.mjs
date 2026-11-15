@@ -178,6 +178,55 @@ try {
   const head = (await import('node:fs')).readFileSync(pdfPath).subarray(0, 5).toString();
   check('PDF', 'PDF wird erstellt und heruntergeladen', head === '%PDF-' && dl.suggestedFilename().startsWith('Tour-de-Suisse-2027'), dl.suggestedFilename());
 
+  // 9a SRF-Programm: Ablauf aus Excel einfügen, Zeiten fortschreiben, LIVE zeigt JETZT
+  await page.goto(URL + '#programm');
+  await page.getByRole('button', { name: 'Aus Excel/Word einfügen …' }).click();
+  const hh = new Date(); const t0 = `${String(hh.getHours()).padStart(2, '0')}:00`;
+  await page.getByLabel('Sendeablauf einfügen').fill(`Zeit\tDauer\tElement\tInhalt\n${t0}\t90\tLive-Rennen\tAusreisser\n\t5\tSiegerehrung\t`);
+  await page.getByRole('button', { name: 'Einfügen', exact: true }).click();
+  await page.getByRole('button', { name: 'Zeiten aus Dauern' }).click();
+  await page.waitForSelector('text=1 Zeiten berechnet');
+  const rd = await lk(async () => (await window.__lk.db.rundown.toArray()).filter((r) => !r.deleted).sort((a, b) => a.order - b.order).map((r) => `${r.time} ${r.item}`));
+  await page.screenshot({ path: `${screens}/09a-programm.png`, fullPage: true });
+  await page.goto(URL + '#live');
+  await page.waitForSelector('.onair-tag');
+  const onair = await page.locator('.onair-panel, .onair').first().textContent();
+  check('SRF-Programm', 'Ablauf einfügen (mit Kopfzeile), Zeiten aus Dauern, LIVE zeigt JETZT', rd.length === 2 && rd[1].startsWith(String(Number(t0.slice(0, 2)) + 1).padStart(2, '0') + ':30') && onair.includes('Live-Rennen'), rd.join(' | '));
+
+  // 9b Geographisches: GPX laden, Wikipedia (simuliert) holen, km to go
+  await ctx.route('https://de.wikipedia.org/**', (route) => {
+    const u = new globalThis.URL(route.request().url());
+    const body = u.searchParams.get('generator') === 'geosearch'
+      ? { query: { pages: [
+          { title: 'Cully VD', coordinates: [{ lat: 46.4885, lon: 6.7305 }], description: 'Ortschaft im Kanton Waadt, Schweiz', categories: [] },
+          { title: 'Schloss Chillon', coordinates: [{ lat: 46.4142, lon: 6.9275 }], description: 'Wasserschloss am Genfersee', categories: [{ title: 'Kategorie:Kulturgut von nationaler Bedeutung im Kanton Waadt' }] },
+        ] } }
+      : { query: { pages: [{ title: 'Cully VD', extract: 'Cully [kyˈji] ist eine Ortschaft im Lavaux.' }, { title: 'Schloss Chillon', extract: 'Das Schloss Chillon ist ein Wasserschloss.' }] } };
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  });
+  const trk = Array.from({ length: 41 }, (_, i) => [46.52 - i * 0.0028, 6.63 + i * 0.0075, 380 + (i % 8) * 25]);
+  const gpxText = `<?xml version="1.0"?><gpx><trk><name>Lausanne–Villeneuve</name><trkseg>${trk.map(([a, b, e]) => `<trkpt lat="${a}" lon="${b}"><ele>${e}</ele></trkpt>`).join('')}</trkseg></trk></gpx>`;
+  await page.goto(URL + '#geo');
+  await page.getByLabel('GPX-Datei laden').setInputFiles({ name: 'etappe.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(gpxText) });
+  await page.waitForSelector('svg.profile');
+  await page.getByRole('button', { name: 'Orte & Sehenswürdigkeiten von Wikipedia holen' }).click();
+  await page.waitForSelector('text=Orte und Sehenswürdigkeiten gefunden', { timeout: 30000 });
+  const rowsTxt = await page.locator('.geo-row').allTextContents();
+  await page.screenshot({ path: `${screens}/09b-geo.png`, fullPage: true });
+  check('Geographisches', 'GPX laden, Höhenprofil, Wikipedia-Orte nach km to go (Cully vor Chillon, Lautschrift entfernt)', rowsTxt.length === 2 && rowsTxt[0].includes('Cully') && rowsTxt[1].includes('Chillon') && !rowsTxt.join().includes('kyˈji'), rowsTxt.map((t) => t.slice(0, 40)).join(' | '));
+  await page.goto(URL + '#live');
+  await page.waitForSelector('.geo-live-row');
+  check('LIVE Geo', 'LIVE zeigt die nächsten Punkte entlang der Strecke', (await page.locator('.geo-live-row').count()) === 2);
+
+  // 9c Hell-Ansicht
+  await page.getByRole('button', { name: /Hell/ }).click();
+  const theme = await page.evaluate(() => [document.documentElement.dataset.theme, getComputedStyle(document.body).backgroundColor]);
+  await page.screenshot({ path: `${screens}/09c-live-hell.png`, fullPage: true });
+  await page.reload();
+  const theme2 = await page.evaluate(() => document.documentElement.dataset.theme);
+  await page.getByRole('button', { name: /Dunkel/ }).click();
+  check('Hell-Ansicht', 'Umschalten auf Hell, bleibt nach Neuladen erhalten', theme[0] === 'light' && theme[1] === 'rgb(244, 243, 239)' && theme2 === 'light', theme.join(' '));
+
   // 10 Sicherung herunterladen, ändern, wiederherstellen
   await page.goto(URL + '#sicherung');
   const [bk] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Sicherung herunterladen' }).click()]);

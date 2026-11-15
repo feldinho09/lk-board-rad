@@ -8,6 +8,8 @@ import { LiveText, RichView } from './rich';
 import { PROFILE_LABEL, fmtDate, stageLabel, useCurrent } from './state';
 import { PcsLink } from './pcs';
 import { pcsRiderUrl } from '../domain/center';
+import { OnAir } from './ProgramView';
+import { GeoLive } from './GeoView';
 
 /**
  * LIVE: links das Feld, Mitte die Fahrerkarte (★-Zeilen zuoberst), rechts Etappe und Rennen.
@@ -72,6 +74,8 @@ export function LiveView() {
       </section>
 
       <aside className="live-side" aria-label="Etappe und Rennen">
+        {cur.stage && <OnAir race={race} stage={cur.stage} />}
+        {cur.stage && <GeoLive race={race} stage={cur.stage} />}
         <StagePanel race={race} stage={cur.stage} topics={topics} />
       </aside>
 
@@ -147,7 +151,7 @@ function StagePanel({ race, stage, topics }: { race: Race; stage?: Stage; topics
       {stage && (
         <div className="panel">
           <h2>{stageLabel(stage, race.kind)}{stage.date ? <span className="muted small"> · {fmtDate(stage.date, { weekday: 'short', day: 'numeric', month: 'numeric' })}</span> : null}</h2>
-          <p style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>{[stage.start, stage.finish].filter(Boolean).join(' – ')}{stage.distanceKm ? ` · ${stage.distanceKm} km` : ''}{stage.profile ? ` · ${PROFILE_LABEL[stage.profile]}` : ''}</p>
+          <p style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>{[[stage.start, stage.finish].filter(Boolean).join(' – '), stage.distanceKm ? `${stage.distanceKm} km` : '', stage.profile ? PROFILE_LABEL[stage.profile] : ''].filter(Boolean).join(' · ')}</p>
           <LiveText value={stage.notes} emptyText="Keine Etappennotizen." />
         </div>
       )}
@@ -184,7 +188,7 @@ function QuickSearch({ initial, entries, onPick, onClose }: { initial: string; e
         <ul>
           {hits.map((h, k) => (
             <li key={h.id}><button className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => onPick(h.id)}>
-              <b style={{ color: 'var(--flag)', minWidth: '2.5em', textAlign: 'right' }}>{h.bib}</b><span className="grow">{h.name}</span><span className="muted small">{h.team}</span>
+              <b style={{ color: 'var(--accent)', minWidth: '2.5em', textAlign: 'right' }}>{h.bib}</b><span className="grow">{h.name}</span><span className="muted small">{h.team}</span>
             </button></li>
           ))}
           {!hits.length && <li className="muted" style={{ padding: 8 }}>Kein Fahrer gefunden.</li>}

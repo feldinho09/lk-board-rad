@@ -1,12 +1,12 @@
 import Dexie, { type Table } from 'dexie';
-import type { Entry, Race, RestorePoint, Rider, Setting, Stage, Topic, Versioned } from '../domain/types';
+import type { Entry, GeoPoint, Race, RestorePoint, Rider, Route, RundownRow, Setting, Stage, Topic, Versioned } from '../domain/types';
 
 /**
  * Lokaler Datenspeicher (IndexedDB) des Rad Command Centers.
  * Eigener Name, damit die Daten des früheren LK Boards im Browser unberührt bleiben.
  */
 export const DB_NAME = 'rad-command-center';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export class CenterDb extends Dexie {
   riders!: Table<Rider, string>;
@@ -14,6 +14,9 @@ export class CenterDb extends Dexie {
   stages!: Table<Stage, string>;
   entries!: Table<Entry, string>;
   topics!: Table<Topic, string>;
+  routes!: Table<Route, string>;
+  geo!: Table<GeoPoint, string>;
+  rundown!: Table<RundownRow, string>;
   restorePoints!: Table<RestorePoint, string>;
   /** Geräteeinstellungen (Ansicht, gewähltes Rennen …) – nicht Teil der Sicherung */
   device!: Table<Setting, string>;
@@ -29,11 +32,17 @@ export class CenterDb extends Dexie {
       restorePoints: 'id, createdAt',
       device: 'key',
     });
+    // v2: Geographisches (Strecke, Punkte) und SRF-Programm
+    this.version(2).stores({
+      routes: 'id, [raceId+stageNumber]',
+      geo: 'id, [raceId+stageNumber], raceId',
+      rundown: 'id, [raceId+stageNumber], raceId',
+    });
   }
 }
 
 /** Fachliche Tabellen – werden gesichert und wiederhergestellt. */
-export const DATA_TABLES = ['riders', 'races', 'stages', 'entries', 'topics'] as const;
+export const DATA_TABLES = ['riders', 'races', 'stages', 'entries', 'topics', 'routes', 'geo', 'rundown'] as const;
 export type DataTableName = (typeof DATA_TABLES)[number];
 
 export let db = new CenterDb();

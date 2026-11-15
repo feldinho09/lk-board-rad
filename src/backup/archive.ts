@@ -124,6 +124,7 @@ export function checkReferences(d: DataSnapshot): string[] {
     if (!races.has(e.raceId as string)) errors.push(`Startlisten-Eintrag ${e.name} ohne Rennen`);
     if (e.riderId && !riders.has(e.riderId as string)) warnings.push(`${e.name}: verknüpftes Profil fehlt (Verknüpfung wird ignoriert)`);
   }
+  for (const t of ['routes', 'geo', 'rundown'] as const) for (const x of d[t] ?? []) if (!races.has(x.raceId as string)) errors.push(`${t}: Eintrag ohne Rennen`);
   if (errors.length) throw new Error('Referenzfehler im Archiv:\n' + errors.slice(0, 10).join('\n'));
   return warnings;
 }
