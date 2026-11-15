@@ -1,101 +1,91 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getDevice, setDevice, nowIso } from '../db/db';
-import { backupFileName, buildArchive, createRestorePoint, restoreFull, verifyArchive, type VerifiedArchive } from '../backup/archive';
-import { saveFile, IS_ARTIFACT } from './host';
-import { useApp } from './state';
+import { db, setDevice } from '../db/db';
+import { backupFileName, buildArchive, createRestorePoint, restoreFull, restorePoint, verifyArchive, type VerifiedArchive } from '../backup/archive';
+import { saveFile } from './host';
+import { confirmDialog } from './dialogs';
+import { fmtDate } from './state';
 
-const fmt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('de-CH') : 'nie');
-const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
-
-export async function backupNow(): Promise<string | null> {
-  const { bytes } = await buildArchive();
-  const r = await saveFile(bytes, backupFileName(), 'application/zip');
-  if (!r.ok) return r.reason;
-  // Ein ausgelöster Download ist KEIN Nachweis einer externen Sicherung – so wird es auch angezeigt.
-  await setDevice('lastDownloadAt', nowIso());
-  return null;
-}
+const LABEL: Record<string, string> = { riders: 'Fahrer', races: 'Rennen', stages: 'Etappen', entries: 'Startlisten-Einträge', topics: 'Themen' };
 
 export function BackupView() {
-  const app = useApp();
-  const points = (useLiveQuery(() => db.restorePoints.orderBy('createdAt').reverse().toArray(), []) ?? []);
-  const lastDownload = useLiveQuery(() => getDevice<string | null>('lastDownloadAt', null), []);
-  const syncPaused = useLiveQuery(() => getDevice<{ reason: string; at: string } | null>('syncPaused', null), []);
+  const points = useLiveQuery(() => db.restorePoints.orderBy('createdAt').reverse().toArray(), []) ?? [];
+  const lastDownload = useLiveQuery(() => db.device.get('lastBackupDownload').then((r) => r?.value as string | undefined), []);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [pending, setPending] = useState<VerifiedArchive | null>(null);
-  const [msg, setMsg] = useState('');
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  const live = app.mode === 'live';
+  const [persist, setPersist] = useState<boolean | null>(null);
+  const [usage, setUsage] = useState<string>('');
+  useEffect(() => {
+    void navigator.storage?.persisted?.().then(setPersist);
+    void navigator.storage?.estimate?.().then((e) => setUsage(e.usage != null ? `${(e.usage / 1024 / 1024).toFixed(1)} MB belegt` : ''));
+  }, []);
 
-  const verify = async (bytes: Uint8Array) => {
-    setErr(''); setMsg(''); setPending(null);
-    try { setPending(await verifyArchive(bytes)); }
-    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  const download = async () => {
+    const { bytes } = await buildArchive();
+    const r = await saveFile(bytes, backupFileName(), 'application/zip');
+    if (r.ok) { await setDevice('lastBackupDownload', new Date().toISOString()); setMsg({ kind: 'ok', text: 'Sicherung heruntergeladen. Bewahre sie ausserhalb dieses Browsers auf (z. B. OneDrive, USB-Stick).' }); }
+    else setMsg({ kind: 'err', text: r.reason });
+  };
+  const pick = async (f: File | undefined) => {
+    setMsg(null); setPending(null);
+    if (!f) return;
+    try { setPending(await verifyArchive(new Uint8Array(await f.arrayBuffer()))); }
+    catch (e) { setMsg({ kind: 'err', text: e instanceof Error ? e.message : String(e) }); }
+  };
+  const restore = async () => {
+    if (!pending) return;
+    if (!(await confirmDialog('Den aktuellen Bestand durch die Sicherung ersetzen? Vorher wird automatisch ein Wiederherstellungspunkt angelegt.', 'Wiederherstellen'))) return;
+    await restoreFull(pending);
+    setPending(null);
+    setMsg({ kind: 'ok', text: 'Sicherung wiederhergestellt.' });
   };
 
   return (
-    <div className="page">
-      <h1>Sicherung & Wiederherstellung</h1>
-      {IS_ARTIFACT && <div className="banner warn">Web-Version: Deine Daten liegen nur in diesem Browser auf diesem Computer. Auf einem anderen Computer ist der Bestand leer – dorthin mit Archiv-Download und Wiederherstellung übertragen.</div>}
-      <p className="muted">Speichern schützt vor Neustart, Sicherungen vor Löschung und Beschädigung. Browserdaten können vom Browser oder durch „Browserdaten löschen“ entfernt werden – deshalb regelmäßig ein Archiv außerhalb des Browsers ablegen (z. B. USB-Stick, Cloud-Ordner).</p>
-
-      <section className="panel">
-        <h2>Jetzt sichern</h2>
-        <p>Letzter Archiv-Download ausgelöst: <strong>{fmt(lastDownload)}</strong> <span className="muted small">(ob die Datei tatsächlich extern abgelegt wurde, kann die App nicht prüfen)</span></p>
+    <main style={{ maxWidth: 900 }}>
+      <div className="panel">
+        <h2>Sicherung herunterladen</h2>
+        <p className="small muted" style={{ marginTop: 0 }}>Alle Daten liegen nur in diesem Browser. Lade regelmässig eine Sicherung herunter – sie enthält alle Fahrer, Rennen, Startlisten und Themen (ZIP mit Prüfsummen und einer offen lesbaren Fahrerliste).</p>
         <div className="row">
-          <button disabled={busy} onClick={async () => { setBusy(true); try { const fail = await backupNow(); if (fail) setErr(fail); else setMsg('Archiv übergeben – bitte Download-Ordner prüfen und Datei extern ablegen (USB-Stick, Cloud-Ordner).'); } catch (e) { setErr(String(e)); } setBusy(false); }}>Gesamten Bestand als Archiv herunterladen</button>
-          <button className="small" disabled={busy} onClick={async () => { setBusy(true); await createRestorePoint('Manuell'); setBusy(false); setMsg('Lokaler Wiederherstellungspunkt erstellt (liegt im selben Browserspeicher – keine unabhängige Sicherung).'); }}>Lokalen Wiederherstellungspunkt erstellen</button>
+          <button className="btn primary" onClick={download}>Sicherung herunterladen</button>
+          <span className="small muted">{lastDownload ? `Zuletzt: ${fmtDate(lastDownload, { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : 'Noch nie heruntergeladen'}</span>
         </div>
-      </section>
+        <p className="small" style={{ marginBottom: 0 }}>
+          Speicher: {persist === true ? <span className="okc">dauerhaft gewährt</span> : persist === false ? <><span className="warn">nicht dauerhaft</span> <button className="linkbtn" onClick={async () => setPersist((await navigator.storage?.persist?.()) ?? false)}>dauerhaft anfordern</button></> : 'unbekannt'}{usage ? ` · ${usage}` : ''}
+        </p>
+      </div>
 
-      <section className="panel">
-        <h2>Archiv wiederherstellen</h2>
-        {live ? <p>Im Live-Modus gesperrt.</p> : (
-          <>
-            <p className="muted small">Das Archiv wird zuerst vollständig geprüft (Prüfsummen, Format, Verweise). Erst nach Bestätigung wird – nach einer automatischen Sicherung des aktuellen Stands – atomar ersetzt. Danach bleibt die Synchronisierung pausiert.</p>
-            <input type="file" accept=".zip" aria-label="Sicherungsarchiv wählen" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await verify(new Uint8Array(await f.arrayBuffer())); }} />
-          </>
-        )}
+      <div className="panel">
+        <h2>Sicherung wiederherstellen</h2>
+        <p className="small muted" style={{ marginTop: 0 }}>Die Datei wird zuerst vollständig geprüft. Erst nach deiner Bestätigung wird der Bestand ersetzt.</p>
+        <input type="file" accept=".zip" onChange={(e) => pick(e.target.files?.[0])} aria-label="Sicherungsdatei wählen" />
         {pending && (
-          <div className="banner warn">
-            <p><strong>Archiv geprüft:</strong> erstellt {fmt(pending.manifest.createdAt)}, Formatversion {pending.manifest.formatVersion}{pending.manifest.note ? ` · ${pending.manifest.note}` : ''}</p>
-            <p>{Object.entries(pending.manifest.counts).filter(([, n]) => n > 0).map(([t, n]) => `${t}: ${n}`).join(' · ')}</p>
-            <button onClick={async () => {
-              setBusy(true);
-              try { await restoreFull(pending); setPending(null); setMsg('Wiederhergestellt. Vorheriger Stand liegt als Wiederherstellungspunkt bereit.'); }
-              catch (e) { setErr('Wiederherstellung abgebrochen, bisheriger Bestand unverändert: ' + String(e)); }
-              setBusy(false);
-            }} disabled={busy}>Aktuellen Bestand ersetzen</button>
-            <button className="link" onClick={() => setPending(null)}>Abbrechen</button>
+          <div className="banner ok">
+            Geprüft: Sicherung vom {fmtDate(pending.manifest.createdAt, { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} mit {Object.entries(pending.manifest.counts).map(([k, n]) => `${n} ${LABEL[k] ?? k}`).join(', ')}.
+            {pending.warnings.map((w, i) => <div key={i} className="warn small">{w}</div>)}
+            <div className="row" style={{ marginTop: 8 }}><button className="btn primary small" onClick={restore}>Wiederherstellen</button><button className="btn small" onClick={() => setPending(null)}>Abbrechen</button></div>
           </div>
         )}
-        {syncPaused && <p className="warn small">Synchronisierung pausiert seit {fmt(syncPaused.at)} ({syncPaused.reason}).</p>}
-      </section>
+      </div>
 
-      {msg && <div className="banner ok">{msg}</div>}
-      {err && <div className="banner err" role="alert" style={{ whiteSpace: 'pre-wrap' }}>{err}</div>}
+      {msg && <div className={`banner ${msg.kind}`} role="status">{msg.text}</div>}
 
-      <section className="panel">
-        <h2>Lokale Wiederherstellungspunkte ({points.length})</h2>
-        <p className="muted small">Automatisch vor Importen, Rücknahmen und Wiederherstellungen sowie alle 15 Minuten bei Änderungen. Die letzten 20 werden behalten, geschützte nie automatisch entfernt.</p>
-        <table className="table compact">
-          <thead><tr><th>Zeit</th><th>Anlass</th><th>Größe</th><th></th></tr></thead>
+      <div className="panel">
+        <div className="row"><h2 className="grow">Wiederherstellungspunkte</h2><button className="btn small" onClick={async () => { await createRestorePoint('Von Hand'); setMsg({ kind: 'ok', text: 'Wiederherstellungspunkt angelegt.' }); }}>Jetzt anlegen</button></div>
+        <p className="small muted" style={{ marginTop: 0 }}>Automatisch vor jeder Startliste, PCS-Übernahme, Löschung und Wiederherstellung. Die letzten 20 bleiben erhalten.</p>
+        <table className="tbl">
           <tbody>
             {points.map((p) => (
               <tr key={p.id}>
-                <td>{fmt(p.createdAt)}</td><td>{p.reason}{p.protected && <span className="tag">geschützt</span>}</td><td>{kb(p.sizeBytes)}</td>
-                <td>
-                  <button className="small" onClick={async () => { const r = await saveFile(p.data, backupFileName('lk-board-wiederherstellungspunkt'), 'application/zip'); if (!r.ok) setErr(r.reason); }}>Herunterladen</button>
-                  <button className="small" onClick={() => db.restorePoints.update(p.id, { protected: !p.protected })}>{p.protected ? 'Schutz aufheben' : 'Schützen'}</button>
-                  {!live && <button className="small" onClick={() => verify(p.data)}>Wiederherstellen …</button>}
-                </td>
+                <td>{fmtDate(p.createdAt, { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                <td>{p.reason}</td>
+                <td className="small muted">{(p.sizeBytes / 1024).toFixed(0)} KB</td>
+                <td><button className="btn small" onClick={async () => { if (await confirmDialog(`Stand „${p.reason}“ zurückspielen? Der aktuelle Stand wird vorher gesichert.`, 'Zurückspielen')) { await restorePoint(p.id); setMsg({ kind: 'ok', text: 'Stand zurückgespielt.' }); } }}>Zurückspielen</button></td>
               </tr>
             ))}
+            {!points.length && <tr><td className="muted small">Noch keine.</td></tr>}
           </tbody>
         </table>
-      </section>
-      <p><a href="#notfall">Notfallübersicht des aktiven Rennens öffnen</a></p>
-    </div>
+      </div>
+    </main>
   );
 }

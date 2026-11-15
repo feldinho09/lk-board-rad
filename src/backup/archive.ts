@@ -1,17 +1,16 @@
 /**
- * Sicherungsformat (Bauplan Abschnitt 13):
- *   lk-board-backup.zip
+ * Sicherungsformat des Rad Command Centers:
+ *   rad-center-sicherung.zip
  *     manifest.json  – Format, Version, Zeit, Zählungen, SHA-256 je Datei
  *     data.json      – alle fachlichen Tabellen (konsistenter Snapshot aus EINER Lesetransaktion)
- *     csv/*.csv      – offen lesbare Tabellen (Fahrer, Teilnahmen) mit Formel-Schutz
- * Gerätebezogene Einstellungen, Sync-Warteschlange und Wiederherstellungspunkte sind
- * NICHT enthalten (keine Zugangsdaten in allgemeinen Exporten).
+ *     csv/fahrer.csv – offen lesbare Fahrerliste mit Formel-Schutz
+ * Geräteeinstellungen und Wiederherstellungspunkte sind nicht enthalten.
  */
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { db, DATA_TABLES, SCHEMA_VERSION, nowIso, uuid, type DataTableName } from '../db/db';
 import type { RestorePoint } from '../domain/types';
 
-export const FORMAT = 'lk-board-rad-backup';
+export const FORMAT = 'rad-command-center-backup';
 export const FORMAT_VERSION = 1;
 
 export interface Manifest {
@@ -57,20 +56,14 @@ export async function buildArchive(snapshot?: DataSnapshot, note?: string): Prom
   const data = snapshot ?? (await readSnapshot());
   const dataBytes = strToU8(JSON.stringify(data));
   const riders = data.riders.filter((r) => !r.deleted);
-  const parts = data.participations.filter((r) => !r.deleted);
-  const ridersCsv = strToU8(toCsv(riders, ['id', 'firstName', 'lastName', 'displayName', 'nationality', 'birthDate', 'pronunciation', 'riderType', 'aliases', 'tags']));
-  const partsCsv = strToU8(toCsv(parts, ['id', 'editionId', 'riderId', 'bib', 'category', 'teamName', 'status', 'favorite']));
-  const files: Record<string, Uint8Array> = {
-    'data.json': dataBytes,
-    'csv/fahrer.csv': ridersCsv,
-    'csv/teilnahmen.csv': partsCsv,
-  };
+  const ridersCsv = strToU8(toCsv(riders, ['id', 'firstName', 'lastName', 'name', 'nation', 'team', 'birthDate', 'birthPlace', 'residence', 'heightCm', 'weightKg', 'riderType', 'pronunciation', 'pcsSlug']));
+  const files: Record<string, Uint8Array> = { 'data.json': dataBytes, 'csv/fahrer.csv': ridersCsv };
   const manifest: Manifest = {
     format: FORMAT,
     formatVersion: FORMAT_VERSION,
     schemaVersion: SCHEMA_VERSION,
     createdAt: nowIso(),
-    appVersion: '0.1.0',
+    appVersion: '2.0.0',
     counts: Object.fromEntries(DATA_TABLES.map((t) => [t, data[t].length])),
     files: {},
     note,
@@ -103,7 +96,7 @@ export async function verifyArchive(bytes: Uint8Array): Promise<VerifiedArchive>
   } catch (e) {
     throw new Error('Archiv ist beschädigt oder kein ZIP: ' + (e instanceof Error ? e.message : String(e)));
   }
-  if (!files['manifest.json']) throw new Error('manifest.json fehlt – keine LK-Board-Sicherung.');
+  if (!files['manifest.json']) throw new Error('manifest.json fehlt – keine Sicherung des Rad Command Centers.');
   const manifest = JSON.parse(strFromU8(files['manifest.json'])) as Manifest;
   if (manifest.format !== FORMAT) throw new Error(`Unbekanntes Format: ${manifest.format}`);
   if (manifest.formatVersion > FORMAT_VERSION) throw new Error(`Formatversion ${manifest.formatVersion} ist neuer als diese App (${FORMAT_VERSION}). Bitte App aktualisieren.`);
@@ -122,18 +115,17 @@ export async function verifyArchive(bytes: Uint8Array): Promise<VerifiedArchive>
 /** Referenzielle Integrität prüfen. Harte Fehler werfen, weiche als Warnung liefern. */
 export function checkReferences(d: DataSnapshot): string[] {
   const ids = (t: DataTableName) => new Set(d[t].map((r) => r.id as string));
+  const races = ids('races');
   const riders = ids('riders');
-  const editions = ids('editions');
-  const stages = ids('stages');
   const errors: string[] = [];
-  for (const p of d.participations) {
-    if (!riders.has(p.riderId as string)) errors.push(`Teilnahme ${String(p.id).slice(0, 8)} verweist auf fehlenden Fahrer`);
-    if (!editions.has(p.editionId as string)) errors.push(`Teilnahme ${String(p.id).slice(0, 8)} verweist auf fehlendes Rennen`);
+  const warnings: string[] = [];
+  for (const s of d.stages) if (!races.has(s.raceId as string)) errors.push(`Etappe ${s.number} ohne Rennen`);
+  for (const e of d.entries) {
+    if (!races.has(e.raceId as string)) errors.push(`Startlisten-Eintrag ${e.name} ohne Rennen`);
+    if (e.riderId && !riders.has(e.riderId as string)) warnings.push(`${e.name}: verknüpftes Profil fehlt (Verknüpfung wird ignoriert)`);
   }
-  for (const s of d.stages) if (!editions.has(s.editionId as string)) errors.push(`Etappe ${s.label} ohne Rennen`);
-  for (const s of d.standings) if (!stages.has(s.stageId as string)) errors.push(`Wertungsstand ohne Etappe`);
   if (errors.length) throw new Error('Referenzfehler im Archiv:\n' + errors.slice(0, 10).join('\n'));
-  return [];
+  return warnings;
 }
 
 /**
@@ -143,16 +135,19 @@ export function checkReferences(d: DataSnapshot): string[] {
  */
 export async function restoreFull(v: VerifiedArchive): Promise<void> {
   await createRestorePoint('Vor Wiederherstellung');
-  const tables = [...DATA_TABLES.map((t) => db.table(t)), db.outbox, db.device];
-  await db.transaction('rw', tables, async () => {
+  await db.transaction('rw', DATA_TABLES.map((t) => db.table(t)), async () => {
     for (const t of DATA_TABLES) {
       await db.table(t).clear();
       if (v.data[t].length) await db.table(t).bulkPut(v.data[t]);
     }
-    await db.outbox.clear();
-    await db.device.put({ key: 'syncPaused', value: { reason: 'Nach Wiederherstellung', at: nowIso() } });
-    await db.device.put({ key: 'deviceId', value: uuid() }); // neue Geräteidentität
   });
+}
+
+/** Einen Wiederherstellungspunkt zurückspielen (vorher wird der aktuelle Stand gesichert). */
+export async function restorePoint(id: string): Promise<void> {
+  const rp = await db.restorePoints.get(id);
+  if (!rp) throw new Error('Wiederherstellungspunkt nicht gefunden');
+  await restoreFull(await verifyArchive(rp.data));
 }
 
 const MAX_RESTORE_POINTS = 20;
@@ -169,7 +164,7 @@ export async function createRestorePoint(reason: string): Promise<RestorePoint> 
   return rp;
 }
 
-export function backupFileName(prefix = 'lk-board-sicherung'): string {
+export function backupFileName(prefix = 'rad-center-sicherung'): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return `${prefix}_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.zip`;

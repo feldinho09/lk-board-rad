@@ -4,7 +4,7 @@
  * Mehrere Seiten hintereinander eingefügt werden getrennt erkannt („Name:“ beginnt jede Seite).
  */
 import type { Rider } from '../domain/types';
-import { normalize, riderSearchTokens } from '../domain/text';
+import { normalize } from '../domain/text';
 
 export interface PcsRiderPage {
   name: string;
@@ -154,45 +154,59 @@ export function riderTypeFrom(p: PcsRiderPage): string | undefined {
   return top && top.points > 0 ? SPECIALTY_DE[top.key] : undefined;
 }
 
-/** Passt die Seite zum Fahrer? Name (akzentfrei) und – falls bekannt – Geburtsjahr. */
-export function pageMatchesRider(p: PcsRiderPage, r: Rider): boolean {
-  const n = normalize(p.name);
-  const names = [r.displayName, `${r.firstName} ${r.lastName}`, ...r.aliases].map(normalize);
-  if (!names.includes(n)) return false;
+/** Passt die Seite zum Fahrer? Name (akzentfrei, Reihenfolge egal) und – falls bekannt – Geburtsjahr. */
+export function pageMatchesRider(p: PcsRiderPage, r: Pick<Rider, 'name' | 'birthDate'>): boolean {
+  const k = (s: string) => normalize(s).split(' ').filter(Boolean).sort().join(' ');
+  if (k(p.name) !== k(r.name)) return false;
   return !(r.birthDate && p.birthDate && !p.birthDate.startsWith(r.birthDate.slice(0, 4)));
 }
 
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const ul = (items: string[]) => `<div><ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>`;
+const hasText = (h?: string) => !!(h ?? '').replace(/<[^>]*>|&nbsp;/g, '').trim();
+
 /**
- * Seite übernehmen: leere Felder füllen; Teamstationen und PCS-Top-Ergebnisse werden ersetzt
- * (eigene Liste der Quelle). Schlüsselfakten/Fahrertyp nur, wenn noch leer.
+ * Änderungen aus einer kopierten PCS-Seite: füllt nur LEERE Felder und LEERE Abschnitte.
+ * Nichts Eigenes wird überschrieben. Liefert den Patch und eine lesbare Liste der Änderungen.
  */
-export function applyPcsPage(r: Rider, p: PcsRiderPage, today = new Date().toISOString().slice(0, 10)): Rider {
-  const next: Rider = { ...r };
-  if (p.birthDate && (!r.birthDate || (r.birthDate.length === 4 && p.birthDate.startsWith(r.birthDate)))) next.birthDate = p.birthDate;
-  if (p.nationality && !r.nationality && /^[A-Z]{3}$/.test(p.nationality)) next.nationality = p.nationality;
-  if (p.birthPlace && !r.birthPlace) next.birthPlace = p.birthPlace;
-  if (p.heightCm && !r.heightCm) next.heightCm = p.heightCm;
-  if (p.weightKg && !r.weightKg) next.weightKg = p.weightKg;
-  if (!r.riderType) next.riderType = riderTypeFrom(p) ?? r.riderType;
-  if (p.teams.length) next.teamHistory = p.teams;
-  if (p.topResults.length) next.topResults = p.topResults;
-  if (p.wins != null) next.careerWins = p.wins;
-  if (p.family.length) next.family = p.family;
-  if (!r.keyFacts.some((f) => f.trim()) && p.topResults.length) next.keyFacts = p.topResults.slice(0, 3);
-  // Schreibweise mit Akzenten übernehmen, wenn nur diese abweicht
-  if (normalize(p.name) === normalize(r.displayName) && p.name !== r.displayName && r.displayName === `${r.firstName} ${r.lastName}`) {
+export function pcsPagePatch(r: Rider, p: PcsRiderPage, year = new Date().getFullYear()): { patch: Partial<Rider>; changes: string[] } {
+  const patch: Partial<Rider> = {};
+  const changes: string[] = [];
+  const set = <K extends keyof Rider>(k: K, v: Rider[K] | undefined, label: string) => {
+    if (v == null || v === '' || (r[k] != null && r[k] !== '')) return;
+    patch[k] = v; changes.push(label);
+  };
+  set('birthDate', p.birthDate, `Geburtsdatum ${p.birthDate}`);
+  if (p.nationality && /^[A-Z]{3}$/.test(p.nationality)) set('nation', p.nationality, `Nation ${p.nationality}`);
+  set('birthPlace', p.birthPlace, `Geburtsort ${p.birthPlace}`);
+  set('heightCm', p.heightCm, `${p.heightCm} cm`);
+  set('weightKg', p.weightKg, `${p.weightKg} kg`);
+  set('riderType', riderTypeFrom(p), `Typ ${riderTypeFrom(p)}`);
+  const current = p.teams.filter((t) => t.year <= year).sort((a, b) => b.year - a.year)[0];
+  if (current) set('team', current.team, `Team ${current.team}`);
+  // Name mit Akzenten übernehmen, wenn nur die Schreibweise abweicht
+  if (normalize(p.name) === normalize(r.name) && p.name !== r.name) {
     const parts = p.name.split(' ');
     const lastLen = r.lastName.split(' ').length;
-    const first = parts.slice(0, parts.length - lastLen).join(' ');
-    const last = parts.slice(parts.length - lastLen).join(' ');
-    if (normalize(first) === normalize(r.firstName) && normalize(last) === normalize(r.lastName)) {
-      Object.assign(next, { firstName: first, lastName: last, displayName: p.name });
-      next.aliases = r.aliases.includes(r.displayName) ? r.aliases : [...r.aliases, r.displayName];
-      next.searchTokens = riderSearchTokens(first, last, p.name, next.aliases);
-    }
+    patch.name = p.name;
+    patch.firstName = parts.slice(0, parts.length - lastLen).join(' ');
+    patch.lastName = parts.slice(parts.length - lastLen).join(' ');
+    changes.push(`Schreibweise ${p.name}`);
   }
-  const src = `ProCyclingStats, kopiert (${today})`;
-  const old = r.sources ?? '';
-  next.sources = old ? (/ProCyclingStats, kopiert \([\d-]+\)/.test(old) ? old.replace(/ProCyclingStats, kopiert \([\d-]+\)/, src) : `${old}; ${src}`) : src;
-  return next;
+  const sections = { ...r.sections };
+  if (p.topResults.length && !hasText(sections.erfolge)) {
+    sections.erfolge = ul([...(p.wins != null ? [`${p.wins} Profisiege (laut PCS)`] : []), ...p.topResults]);
+    changes.push(`Erfolge (${p.topResults.length} Top-Ergebnisse)`);
+  }
+  if (p.teams.length && !hasText(sections.person)) {
+    const spans = teamSpans(p.teams).map((s) => `${s.from === s.to ? s.from : `${s.from}–${Math.min(s.to, year)}`} ${s.team}${s.to > year ? ` (Vertrag bis ${s.to})` : ''}`);
+    sections.person = `<div><b>Teams</b></div>${ul(spans)}`;
+    changes.push(`Person (${spans.length} Teamstationen)`);
+  }
+  if (p.family.length && !hasText(sections.persoenlich)) {
+    sections.persoenlich = `<div><b>Familie</b></div>${ul(p.family)}`;
+    changes.push('Persönliches (Familie)');
+  }
+  if (sections.erfolge !== r.sections.erfolge || sections.person !== r.sections.person || sections.persoenlich !== r.sections.persoenlich) patch.sections = sections;
+  return { patch, changes };
 }

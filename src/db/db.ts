@@ -1,100 +1,61 @@
 import Dexie, { type Table } from 'dexie';
-import type {
-  Rider, Team, RaceSeries, Edition, Stage, Participation, ClassificationStanding,
-  Note, RaceEvent, RaceGroup, ImportRun, SavedMapping, ChangeOp, RestorePoint, Setting, Versioned,
-} from '../domain/types';
+import type { Entry, Race, RestorePoint, Rider, Setting, Stage, Topic, Versioned } from '../domain/types';
 
+/**
+ * Lokaler Datenspeicher (IndexedDB) des Rad Command Centers.
+ * Eigener Name, damit die Daten des früheren LK Boards im Browser unberührt bleiben.
+ */
+export const DB_NAME = 'rad-command-center';
 export const SCHEMA_VERSION = 1;
 
-export class LkDb extends Dexie {
+export class CenterDb extends Dexie {
   riders!: Table<Rider, string>;
-  teams!: Table<Team, string>;
-  series!: Table<RaceSeries, string>;
-  editions!: Table<Edition, string>;
+  races!: Table<Race, string>;
   stages!: Table<Stage, string>;
-  participations!: Table<Participation, string>;
-  standings!: Table<ClassificationStanding, string>;
-  notes!: Table<Note, string>;
-  events!: Table<RaceEvent, string>;
-  groups!: Table<RaceGroup, string>;
-  importRuns!: Table<ImportRun, string>;
-  mappings!: Table<SavedMapping, string>;
-  outbox!: Table<ChangeOp, string>;
+  entries!: Table<Entry, string>;
+  topics!: Table<Topic, string>;
   restorePoints!: Table<RestorePoint, string>;
-  /** Gerätebezogene Einstellungen – nicht Teil des gemeinsamen Datenbestands */
+  /** Geräteeinstellungen (Ansicht, gewähltes Rennen …) – nicht Teil der Sicherung */
   device!: Table<Setting, string>;
 
-  constructor(name = 'lk-board-rad') {
+  constructor(name = DB_NAME) {
     super(name);
     this.version(SCHEMA_VERSION).stores({
-      riders: 'id, lastName, *searchTokens, *aliases, updatedAt',
-      teams: 'id, name',
-      series: 'id, name',
-      editions: 'id, seriesId, year, status, startDate',
-      stages: 'id, editionId, [editionId+order]',
-      participations: 'id, editionId, riderId, [editionId+bib], [editionId+riderId]',
-      standings: 'id, editionId, [editionId+kind+stageId]',
-      notes: 'id, refId, editionId',
-      events: 'id, editionId, at',
-      groups: 'id, editionId',
-      importRuns: 'id, editionId, createdAt',
-      mappings: 'id, name',
-      outbox: 'opId, synced, entity, at',
+      riders: 'id, lastName, searchKey, updatedAt',
+      races: 'id, year, startDate',
+      stages: 'id, raceId, [raceId+number]',
+      entries: 'id, raceId, riderId, [raceId+bib]',
+      topics: 'id, kind, raceId, *riderIds, updatedAt',
       restorePoints: 'id, createdAt',
       device: 'key',
     });
   }
 }
 
-/** Fachliche Tabellen, die gesichert und (später) synchronisiert werden. */
-export const DATA_TABLES = [
-  'riders', 'teams', 'series', 'editions', 'stages', 'participations', 'standings',
-  'notes', 'events', 'groups', 'importRuns', 'mappings',
-] as const;
+/** Fachliche Tabellen – werden gesichert und wiederhergestellt. */
+export const DATA_TABLES = ['riders', 'races', 'stages', 'entries', 'topics'] as const;
 export type DataTableName = (typeof DATA_TABLES)[number];
 
-export let db = new LkDb();
+export let db = new CenterDb();
 
 /** Nur für Tests: frische Datenbank unter anderem Namen. */
-export function useDatabase(name: string): LkDb {
-  db = new LkDb(name);
+export function useDatabase(name: string): CenterDb {
+  db = new CenterDb(name);
   return db;
 }
 
-export function uuid(): string {
-  return crypto.randomUUID();
-}
+export const uuid = () => crypto.randomUUID();
+export const nowIso = () => new Date().toISOString();
 
-export function nowIso(): string {
-  return new Date().toISOString();
-}
-
-let deviceIdCache: string | null = null;
-export async function deviceId(): Promise<string> {
-  if (deviceIdCache) return deviceIdCache;
-  const row = await db.device.get('deviceId');
-  if (row) return (deviceIdCache = row.value as string);
-  const id = uuid();
-  await db.device.put({ key: 'deviceId', value: id });
-  return (deviceIdCache = id);
-}
-
-export function resetDeviceIdCache(): void {
-  deviceIdCache = null;
-}
-
-/** Erzeugt Basisfelder eines neuen Datensatzes. */
 export function newRecord<T extends object>(fields: T): T & Versioned {
   const t = nowIso();
   return { id: uuid(), rev: 0, createdAt: t, updatedAt: t, ...fields } as T & Versioned;
 }
 
-// ---- Speicherstatus für die Oberfläche ----------------------------------------
-export type SaveState =
-  | { kind: 'ok'; at: string }
-  | { kind: 'error'; at: string; message: string }
-  | { kind: 'idle' };
+export const alive = <T extends Versioned>(rows: T[]): T[] => rows.filter((r) => !r.deleted);
 
+// ---- Speicherstatus für die Oberfläche ---------------------------------------
+export type SaveState = { kind: 'ok'; at: string } | { kind: 'error'; at: string; message: string } | { kind: 'idle' };
 type Listener = (s: SaveState) => void;
 let saveState: SaveState = { kind: 'idle' };
 const listeners = new Set<Listener>();
@@ -107,47 +68,31 @@ function setSaveState(s: SaveState) {
   saveState = s;
   listeners.forEach((l) => l(s));
 }
-export function getSaveState(): SaveState {
-  return saveState;
-}
 
-/**
- * Schreibzugriff: Datensätze speichern UND Versandaufträge in DERSELBEN
- * IndexedDB-Transaktion ablegen (Bauplan 12, Prinzip 1).
- * "Lokal gespeichert" wird erst nach erfolgreichem Commit gemeldet.
- */
 export interface Writer {
   put<T extends Versioned>(table: DataTableName, rec: T): Promise<T>;
+  /** Löschmarkierung statt hartem Löschen (Wiederherstellung über Sicherungen möglich) */
   remove(table: DataTableName, id: string): Promise<void>;
 }
 
+/**
+ * Jeder Schreibvorgang läuft in EINER Transaktion; „Gespeichert“ wird erst nach dem
+ * erfolgreichen Abschluss gemeldet, ein Fehler bleibt sichtbar.
+ */
 export async function mutate<R>(tables: DataTableName[], fn: (w: Writer) => Promise<R>): Promise<R> {
-  const dev = await deviceId();
-  const tbls = [...tables.map((t) => db.table(t)), db.outbox];
   try {
-    const result = await db.transaction('rw', tbls, async () => {
+    const result = await db.transaction('rw', tables.map((t) => db.table(t)), async () => {
       const w: Writer = {
         async put(table, rec) {
           const existing = (await db.table(table).get(rec.id)) as Versioned | undefined;
-          const baseRev = existing?.rev ?? 0;
-          const next = { ...rec, rev: baseRev + 1, updatedAt: nowIso() };
+          const next = { ...rec, rev: (existing?.rev ?? 0) + 1, updatedAt: nowIso() };
           if (!existing) next.createdAt = rec.createdAt ?? next.updatedAt;
           await db.table(table).put(next);
-          await db.outbox.add({
-            opId: uuid(), entity: table, entityId: rec.id, op: 'put', baseRev, rev: next.rev,
-            at: next.updatedAt, deviceId: dev, synced: 0,
-          });
           return next;
         },
         async remove(table, id) {
           const existing = (await db.table(table).get(id)) as Versioned | undefined;
-          if (!existing) return;
-          const next = { ...existing, deleted: true, rev: existing.rev + 1, updatedAt: nowIso() };
-          await db.table(table).put(next);
-          await db.outbox.add({
-            opId: uuid(), entity: table, entityId: id, op: 'delete', baseRev: existing.rev, rev: next.rev,
-            at: next.updatedAt, deviceId: dev, synced: 0,
-          });
+          if (existing) await db.table(table).put({ ...existing, deleted: true, rev: existing.rev + 1, updatedAt: nowIso() });
         },
       };
       return fn(w);
@@ -155,8 +100,7 @@ export async function mutate<R>(tables: DataTableName[], fn: (w: Writer) => Prom
     setSaveState({ kind: 'ok', at: nowIso() });
     return result;
   } catch (err) {
-    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    setSaveState({ kind: 'error', at: nowIso(), message });
+    setSaveState({ kind: 'error', at: nowIso(), message: err instanceof Error ? `${err.name}: ${err.message}` : String(err) });
     throw err;
   }
 }
@@ -167,8 +111,4 @@ export async function getDevice<T>(key: string, fallback: T): Promise<T> {
 }
 export async function setDevice(key: string, value: unknown): Promise<void> {
   await db.device.put({ key, value });
-}
-
-export function alive<T extends Versioned>(rows: T[]): T[] {
-  return rows.filter((r) => !r.deleted);
 }

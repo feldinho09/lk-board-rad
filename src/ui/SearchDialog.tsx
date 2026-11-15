@@ -1,69 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
-import { search, type SearchHit } from '../domain/search';
-import { useApp } from './state';
+import { searchAll, type Hit } from '../domain/center';
+import { go } from './state';
 
-export function SearchDialog({ onClose, initial = '' }: { onClose: () => void; initial?: string }) {
-  const app = useApp();
-  const [q, setQ] = useState(initial);
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  const [hitsFor, setHitsFor] = useState('');
-  const [idx, setIdx] = useState(0);
-  const [ms, setMs] = useState<number | null>(null);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
-  useEffect(() => {
-    let cancel = false;
-    const t0 = performance.now();
-    search(q, app.editionId).then((h) => {
-      if (cancel) return;
-      setHits(h);
-      setHitsFor(q);
-      setIdx(0);
-      setMs(Math.round(performance.now() - t0));
-    });
-    return () => { cancel = true; };
-  }, [q, app.editionId]);
+const KIND = { rider: 'Fahrer', race: 'Rennen', topic: 'Thema' } as const;
 
-  const choose = (h: SearchHit) => {
-    if (h.participation) {
-      app.select(h.rider.id);
-      location.hash = '#live';
-    } else location.hash = `#fahrer-${h.rider.id}`;
-    onClose();
-  };
-
+/** Suche über alles (Strg K): Fahrer, Rennen, Themen – auch in Texten, akzentunabhängig. */
+export function SearchDialog({ onClose }: { onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState<Hit[]>([]);
+  const [i, setI] = useState(0);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  useEffect(() => { let stop = false; void searchAll(q).then((h) => { if (!stop) { setHits(h); setI(0); } }); return () => { stop = true; }; }, [q]);
+  const open = (h: Hit) => { go(`${h.kind === 'rider' ? 'fahrer' : h.kind === 'race' ? 'rennen' : 'themen'}-${h.id}`); onClose(); };
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
-      <div className="dialog search" role="dialog" aria-label="Suche" onClick={(e) => e.stopPropagation()}>
-        <input
-          ref={input}
-          value={q}
-          placeholder="Startnummer oder Name (auch ohne Akzente)"
-          aria-label="Suchbegriff"
-          onChange={(e) => setQ(e.target.value)}
+    <div className="qsearch" onClick={onClose}>
+      <div className="box" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Suche">
+        <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Fahrer, Rennen, Themen, Stichwort …" aria-label="Suchbegriff"
           onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') { e.preventDefault(); setIdx((i) => Math.min(i + 1, hits.length - 1)); }
-            if (e.key === 'ArrowUp') { e.preventDefault(); setIdx((i) => Math.max(i - 1, 0)); }
-            if (e.key === 'Enter') {
-              // Nie auf veraltete Treffer reagieren: bei schneller Eingabe erst aktuelle Suche abwarten
-              if (hitsFor === q) { if (hits[idx]) choose(hits[idx]); }
-              else void search(q, app.editionId).then((h) => h[0] && choose(h[0]));
-            }
             if (e.key === 'Escape') onClose();
-          }}
-        />
-        <ul className="hits" role="listbox">
-          {hits.map((h, i) => (
-            <li key={h.rider.id} role="option" aria-selected={i === idx} className={i === idx ? 'sel' : ''} onMouseDown={() => choose(h)}>
-              <span className="bib">{h.participation?.bib ?? '—'}</span>
-              <span className="name">{h.rider.displayName}</span>
-              <span className="muted">{h.participation?.teamName ?? (h.rider.nationality ?? '')}</span>
-              <span className="tag">{h.reason === 'startnummer' ? 'Startnummer' : h.reason === 'name_im_rennen' ? 'im Rennen' : 'Datenbank'}</span>
-            </li>
+            if (e.key === 'ArrowDown') { e.preventDefault(); setI((x) => Math.min(x + 1, hits.length - 1)); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setI((x) => Math.max(x - 1, 0)); }
+            if (e.key === 'Enter' && hits[i]) open(hits[i]);
+          }} />
+        <ul>
+          {hits.map((h, k) => (
+            <li key={`${h.kind}-${h.id}`}><button className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => open(h)}>
+              <span className="muted small" style={{ minWidth: 60 }}>{KIND[h.kind]}</span><span className="grow">{h.title}</span><span className="muted small">{h.sub}</span>
+            </button></li>
           ))}
-          {q && hits.length === 0 && <li className="muted">Keine Treffer</li>}
+          {q && !hits.length && <li className="muted" style={{ padding: 8 }}>Nichts gefunden.</li>}
         </ul>
-        {ms != null && q && <div className="muted small">{hits.length} Treffer · {ms} ms</div>}
       </div>
     </div>
   );

@@ -1,193 +1,180 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, alive, mutate, newRecord } from '../db/db';
-import type { Note, Rider } from '../domain/types';
-import { normalize, riderSearchTokens } from '../domain/text';
-import { toPlain } from '../domain/richtext';
-import { RichText, RichView } from './RichText';
-import { WikidataPanel } from './WikidataPanel';
-import { TissotPalmaresPanel } from './TissotPanel';
-import { PalmaresList } from './PalmaresView';
-import { CareerInfo, PcsRiderPastePanel } from './PcsRiderPanel';
-import { RefreshAllPanel } from './RefreshAllPanel';
-import { IS_ARTIFACT } from './host';
-import { useApp } from './state';
-import { confirmDialog } from './dialogs';
-
-type F<T> = Omit<T, 'id' | 'rev' | 'createdAt' | 'updatedAt'>;
+import { db, alive } from '../db/db';
+import { RIDER_SECTIONS, type Rider } from '../domain/types';
+import { normalize } from '../domain/text';
+import {
+  ageOn, allRiders, createRider, createTopic, daysSince, deleteRider, pcsRiderUrl, pcsSlugFrom, saveRiderSection, splitName, updateRider,
+} from '../domain/center';
+import { pageMatchesRider, parsePcsRiderPages, pcsPagePatch } from '../import/pcsRider';
+import { createRestorePoint } from '../backup/archive';
+import { RichField } from './rich';
+import { PcsLink } from './pcs';
+import { confirmDialog, promptDialog } from './dialogs';
+import { fmtDate, go, useCurrent } from './state';
+import { TopicCards } from './TopicsView';
+import { CommitInput } from './inputs';
 
 export function RidersView({ id }: { id?: string }) {
-  return id ? <RiderDetail id={id} /> : <RiderList />;
-}
-
-function RiderList() {
+  const riders = useLiveQuery(allRiders, []) ?? [];
+  const cur = useCurrent();
+  const inRace = useLiveQuery(async () => cur.race ? new Set(alive(await db.entries.where('raceId').equals(cur.race.id).toArray()).map((e) => e.riderId).filter(Boolean) as string[]) : new Set<string>(), [cur.race?.id]) ?? new Set<string>();
   const [q, setQ] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  const total = useLiveQuery(() => db.riders.count(), []) ?? 0;
-  const list = useLiveQuery(async () => {
-    const nq = normalize(q);
-    const base = nq ? db.riders.where('searchTokens').startsWith(nq.split(' ')[0]) : db.riders.orderBy('lastName');
-    const rows = await base.limit(400).toArray();
-    const seen = new Set<string>();
-    return alive(rows).filter((r) => !seen.has(r.id) && seen.add(r.id) && (showArchived || !r.archived) && !r.mergedInto).slice(0, 200);
-  }, [q, showArchived]) ?? [];
+  const [onlyRace, setOnlyRace] = useState(false);
+  const list = useMemo(() => {
+    const n = normalize(q);
+    return riders.filter((r) => (!n || normalize(`${r.name} ${r.team ?? ''} ${r.nation ?? ''}`).includes(n)) && (!onlyRace || inRace.has(r.id)));
+  }, [riders, q, onlyRace, inRace]);
 
-  const create = async () => {
-    const r = newRecord<F<Rider>>({ firstName: '', lastName: 'Neuer Fahrer', displayName: 'Neuer Fahrer', aliases: [], keyFacts: [], tags: [], externalIds: [], searchTokens: ['neuer', 'fahrer', 'neuer fahrer'] }) as Rider;
-    await mutate(['riders'], (w) => w.put('riders', r));
-    location.hash = `#fahrer-${r.id}`;
+  const add = async () => {
+    const name = await promptDialog('Name des Fahrers (z. B. „Tadej Pogačar“):');
+    if (!name?.trim()) return;
+    const r = await createRider({ ...splitName(name.trim()), name: name.trim() });
+    go(`fahrer-${r.id}`);
   };
 
   return (
-    <div className="page">
-      <h1>Fahrer <span className="muted">({total} im Bestand)</span></h1>
-      <div className="row">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name filtern (auch ohne Akzente)" aria-label="Fahrer filtern" />
-        <label><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Archivierte</label>
-        <button onClick={create}>+ Fahrer</button>
-      </div>
-      {!IS_ARTIFACT && <RefreshAllPanel />}
-      <WikidataPanel />
-      {!IS_ARTIFACT && <TissotPalmaresPanel />}
-      <details className="panel">
-        <summary>PCS-Fahrerseiten einfügen (eine oder mehrere)</summary>
-        <PcsRiderPastePanel />
-      </details>
-      <table className="table">
-        <thead><tr><th>Name</th><th>Nation</th><th>Geburt</th><th>Typ</th><th>Aussprache</th></tr></thead>
-        <tbody>
+    <main className="split">
+      <aside className="panel sidelist">
+        <div className="row">
+          <h2 className="grow" style={{ margin: 0 }}>Fahrer <span className="muted small">{riders.length}</span></h2>
+          <button className="btn small primary" onClick={add}>+ Fahrer</button>
+        </div>
+        <input type="search" placeholder="Filtern …" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Fahrer filtern" />
+        {cur.race && <label className="check small"><input type="checkbox" checked={onlyRace} onChange={(e) => setOnlyRace(e.target.checked)} /> nur im Rennen {cur.race.name}</label>}
+        <ul>
           {list.map((r) => (
-            <tr key={r.id}>
-              <td><a href={`#fahrer-${r.id}`}>{r.displayName}</a>{r.archived && <span className="tag">archiviert</span>}</td>
-              <td>{r.nationality ?? '–'}</td><td>{r.birthDate ?? 'unbekannt'}</td><td>{r.riderType ?? '–'}</td><td>{r.pronunciation ?? '–'}</td>
-            </tr>
+            <li key={r.id}>
+              <a href={`#fahrer-${r.id}`} className={r.id === id ? 'on' : ''}>
+                {inRace.has(r.id) && <span className="dot" title="im gewählten Rennen" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--flag)', display: 'inline-block' }} />}
+                <span>{r.name}</span><span className="meta">{[r.nation, r.team].filter(Boolean).join(' · ')}</span>
+              </a>
+            </li>
           ))}
-        </tbody>
-      </table>
-      {list.length === 200 && <p className="muted">Nur die ersten 200 Treffer – Filter verfeinern.</p>}
-    </div>
+          {!list.length && <li className="muted small" style={{ padding: 8 }}>{riders.length ? 'Kein Treffer.' : 'Noch keine Fahrer. Lege die wichtigsten Fahrer selbst an – oder aus der Startliste eines Rennens.'}</li>}
+        </ul>
+      </aside>
+      <section>
+        {id ? <RiderEditor id={id} /> : <div className="panel empty-state">Fahrer links auswählen oder neu anlegen.<br /><span className="small">Profile bleiben von Rennen zu Rennen erhalten: Sobald ein Fahrer in einer Startliste steht, ist sein Profil dort verknüpft.</span></div>}
+      </section>
+    </main>
   );
 }
 
-function RiderDetail({ id }: { id: string }) {
-  const app = useApp();
-  const rider = useLiveQuery(() => db.riders.get(id), [id]);
-  const parts = useLiveQuery(() => db.participations.where('riderId').equals(id).toArray().then(alive), [id]) ?? [];
-  const editions = useLiveQuery(async () => new Map((await db.editions.bulkGet(parts.map((p) => p.editionId))).filter(Boolean).map((e) => [e!.id, e!])), [parts]) ?? new Map();
-  const notes = useLiveQuery(() => db.notes.where('refId').equals(id).toArray().then(alive), [id]) ?? [];
-  const [draft, setDraft] = useState<Rider | null>(null);
-  const [noteText, setNoteText] = useState('');
-  const [noteKey, setNoteKey] = useState(0);
-  const [editNote, setEditNote] = useState<string | null>(null);
-  const [msg, setMsg] = useState('');
-  // Entwurf folgt Änderungen von aussen (PCS, Wikipedia, Tissot), solange nichts ungespeichert ist
-  const synced = useRef<Rider | null>(null);
-  useEffect(() => {
-    if (!rider) return;
-    if (!draft || draft.id !== rider.id || JSON.stringify(draft) === JSON.stringify(synced.current)) { setDraft(rider); synced.current = rider; }
-  }, [rider]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!rider || !draft) return <p>Fahrer nicht gefunden.</p>;
-  if (rider.mergedInto) return <p>Dieser Datensatz wurde zusammengeführt. <a href={`#fahrer-${rider.mergedInto}`}>Zum aktuellen Profil</a></p>;
-  const dirty = JSON.stringify(draft) !== JSON.stringify(rider);
-  const set = (patch: Partial<Rider>) => setDraft({ ...draft, ...patch });
+const FIELDS: { key: keyof Rider; label: string; type?: 'number' | 'date'; width?: number }[] = [
+  { key: 'firstName', label: 'Vorname' }, { key: 'lastName', label: 'Nachname' }, { key: 'nation', label: 'Nation (IOC, z. B. SUI)' }, { key: 'team', label: 'Team' },
+  { key: 'birthDate', label: 'Geburtsdatum', type: 'date' }, { key: 'birthPlace', label: 'Geburtsort' }, { key: 'residence', label: 'Wohnort' },
+  { key: 'heightCm', label: 'Grösse (cm)', type: 'number' }, { key: 'weightKg', label: 'Gewicht (kg)', type: 'number' },
+  { key: 'riderType', label: 'Fahrertyp' }, { key: 'pronunciation', label: 'Aussprache' },
+];
 
-  const save = async () => {
-    const displayName = draft.displayName.trim() || `${draft.firstName} ${draft.lastName}`.trim();
-    const next = { ...draft, displayName, searchTokens: riderSearchTokens(draft.firstName, draft.lastName, displayName, draft.aliases), keyFacts: draft.keyFacts.filter(Boolean).slice(0, 3) };
-    await mutate(['riders'], (w) => w.put('riders', next));
-    setMsg('Lokal gespeichert. Bereits laufende und archivierte Rennen behalten ihre Teilnahmedaten (Team, Startnummer).');
+function RiderEditor({ id }: { id: string }) {
+  const r = useLiveQuery(() => db.riders.get(id), [id]);
+  const topics = useLiveQuery(async () => alive(await db.topics.where('riderIds').equals(id).toArray()), [id]) ?? [];
+  const races = useLiveQuery(async () => {
+    const es = alive(await db.entries.where('riderId').equals(id).toArray());
+    const rs = (await db.races.bulkGet(es.map((e) => e.raceId))).filter((x) => x && !x.deleted);
+    return rs.map((race, i) => ({ race: race!, entry: es[i] })).sort((a, b) => (b.race.startDate ?? '').localeCompare(a.race.startDate ?? ''));
+  }, [id]) ?? [];
+  if (r === undefined) return null;
+  if (!r || r.deleted) return <div className="panel empty-state">Dieser Fahrer existiert nicht (mehr).</div>;
+
+  const saveField = (key: keyof Rider, raw: string, type?: string) => {
+    const v = raw.trim();
+    const val = type === 'number' ? (v ? Number(v.replace(',', '.')) : undefined) : v || undefined;
+    if ((r[key] ?? undefined) === val) return;
+    if ((key === 'firstName' || key === 'lastName') && !v) return;
+    void updateRider(r.id, { [key]: val } as Partial<Rider>);
   };
-  const addNote = async () => {
-    if (!toPlain(noteText).trim()) return;
-    await mutate(['notes'], (w) => w.put('notes', newRecord<F<Note>>({ scope: 'rider', refId: id, text: noteText, toldInEditions: [], priority: false, private: true }) as Note));
-    setNoteKey((k) => k + 1);
-    setNoteText('');
-  };
+  const age = ageOn(r.birthDate, new Date().toISOString().slice(0, 10));
+  const stale = daysSince(r.aktuellAt);
 
   return (
-    <div className="page">
-      <p><a href="#fahrer">← Fahrer</a></p>
-      <h1>{rider.displayName}</h1>
-      <fieldset className="form grid2">
-        <legend>Profil (rennunabhängig)</legend>
-        <label>Vorname <input value={draft.firstName} onChange={(e) => set({ firstName: e.target.value })} /></label>
-        <label>Nachname <input value={draft.lastName} onChange={(e) => set({ lastName: e.target.value })} /></label>
-        <label>Angezeigter Name <input value={draft.displayName} onChange={(e) => set({ displayName: e.target.value })} /></label>
-        <label>Aliasnamen (Komma) <input value={draft.aliases.join(', ')} onChange={(e) => set({ aliases: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} /></label>
-        <label>Aussprache <input value={draft.pronunciation ?? ''} onChange={(e) => set({ pronunciation: e.target.value })} /></label>
-        <label>Nationalität <input value={draft.nationality ?? ''} onChange={(e) => set({ nationality: e.target.value || undefined })} /></label>
-        <label>Geburtsdatum oder -jahr <input value={draft.birthDate ?? ''} placeholder="JJJJ oder JJJJ-MM-TT – leer lassen, wenn unbekannt" onChange={(e) => set({ birthDate: e.target.value || undefined })} /></label>
-        <label>Geburtsort <input value={draft.birthPlace ?? ''} onChange={(e) => set({ birthPlace: e.target.value || undefined })} /></label>
-        <label>Grösse (cm) <input type="number" value={draft.heightCm ?? ''} onChange={(e) => set({ heightCm: e.target.value ? Number(e.target.value) : undefined })} /></label>
-        <label>Gewicht (kg) <input type="number" step="0.1" value={draft.weightKg ?? ''} onChange={(e) => set({ weightKg: e.target.value ? Number(e.target.value) : undefined })} /></label>
-        <label>Wohnort <input value={draft.residence ?? ''} onChange={(e) => set({ residence: e.target.value || undefined })} /></label>
-        <label>Fahrertyp <input value={draft.riderType ?? ''} onChange={(e) => set({ riderType: e.target.value || undefined })} /></label>
-        <label>Tags (Komma) <input value={draft.tags.join(', ')} onChange={(e) => set({ tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} /></label>
-        <div className="wide rt-field"><span className="rt-label">Stärken</span>
-          <RichText label="Stärken" compact value={draft.strengths ?? ''} onInput={(h) => set({ strengths: h || undefined })} onChange={(h) => set({ strengths: h || undefined })} />
+    <>
+      <div className="panel">
+        <div className="row">
+          <h1 className="grow" style={{ fontSize: '2rem' }}>{r.name}</h1>
+          <PcsLink url={pcsRiderUrl(r)}>PCS-Seite</PcsLink>
+          <button className="btn small danger" onClick={async () => { if (await confirmDialog(`${r.name} löschen? Startlisten behalten den Namen.`, 'Löschen')) { await createRestorePoint(`Vor Löschen von ${r.name}`); await deleteRider(r.id); go('fahrer'); } }}>Löschen</button>
         </div>
-        <div className="wide rt-field"><span className="rt-label">Kurzbiografie</span>
-          <RichText label="Kurzbiografie" value={draft.bio ?? ''} onInput={(h) => set({ bio: h || undefined })} onChange={(h) => set({ bio: h || undefined })} />
-        </div>
-        {[0, 1, 2].map((i) => {
-          const setFact = (h: string) => { const k = [...draft.keyFacts]; k[i] = h; set({ keyFacts: k }); };
-          return (
-            <div key={i} className="wide rt-field"><span className="rt-label">Schlüsselfakt {i + 1}</span>
-              <RichText label={`Schlüsselfakt ${i + 1}`} compact value={draft.keyFacts[i] ?? ''} onInput={setFact} onChange={setFact} />
-            </div>
-          );
-        })}
-        <label>Quellen <input value={draft.sources ?? ''} onChange={(e) => set({ sources: e.target.value || undefined })} /></label>
-        {draft.palmares && draft.palmares.length > 0 && (
-          <div className="wide"><span className="rt-label">Palmarès</span><PalmaresList entries={draft.palmares} source={draft.palmaresSource} years={5} /></div>
-        )}
-        {(draft.teamHistory?.length || draft.topResults?.length || draft.family?.length) ? (
-          <div className="wide"><span className="rt-label">Karriere (PCS)</span><CareerInfo r={draft} /></div>
-        ) : null}
-        {!IS_ARTIFACT && (
-          <details className="wide">
-            <summary>Infos von ProCyclingStats einfügen</summary>
-            {dirty ? <p className="warn small">Zuerst die Änderungen speichern.</p> : <PcsRiderPastePanel riderId={draft.id} />}
-          </details>
-        )}
-        <label>Zuletzt geprüft <input type="date" value={draft.lastVerifiedAt ?? ''} onChange={(e) => set({ lastVerifiedAt: e.target.value || undefined })} /></label>
-        <div className="wide muted small">Externe IDs: {rider.externalIds.length ? rider.externalIds.map((e) => `${e.ns}:${e.value}`).join(', ') : 'keine'}</div>
-      </fieldset>
-      <div className="row">
-        <button disabled={!dirty} onClick={save}>Speichern</button>
-        {dirty && <button className="link" onClick={() => setDraft(rider)}>Verwerfen</button>}
-        <button className="link" disabled={app.mode === 'live'} onClick={() => mutate(['riders'], (w) => w.put('riders', { ...rider, archived: !rider.archived }))}>{rider.archived ? 'Archivierung aufheben' : 'Archivieren'}</button>
-        {msg && <span className="ok small">{msg}</span>}
-      </div>
-
-      <h2>Notizen</h2>
-      <ul className="notes">
-        {notes.map((n) => (
-          <li key={n.id}>
-            {editNote === n.id
-              ? <RichText label="Notiz bearbeiten" autoFocus value={n.text} onChange={(h) => { setEditNote(null); if (h && h !== n.text) void mutate(['notes'], (w) => w.put('notes', { ...n, text: h })); }} />
-              : <RichView value={n.text} />}
-            {n.private && <span className="tag">privat</span>}
-            {editNote !== n.id && <button className="link" onClick={() => setEditNote(n.id)}>bearbeiten</button>}
-            <button className="link" onClick={() => mutate(['notes'], (w) => w.put('notes', { ...n, priority: !n.priority }))}>{n.priority ? '★ Schlüsselfakt' : 'als Schlüsselfakt'}</button>
-            <button className="link" onClick={async () => { if (await confirmDialog('Notiz löschen?', 'Löschen')) await mutate(['notes'], (w) => w.remove('notes', n.id)); }}>löschen</button>
-          </li>
-        ))}
-      </ul>
-      <div className="row">
-        <div style={{ flex: 1 }}><RichText key={noteKey} label="Neue Notiz" placeholder="Hintergrundnotiz – mit Formatierung" value="" onInput={setNoteText} onChange={setNoteText} /></div>
-        <button onClick={addNote}>Notiz hinzufügen</button>
-      </div>
-
-      <h2>Teilnahmen</h2>
-      <table className="table">
-        <thead><tr><th>Rennen</th><th>Nr.</th><th>Team damals</th><th>Status</th></tr></thead>
-        <tbody>
-          {parts.map((p) => (
-            <tr key={p.id}><td><a href={`#rennen-${p.editionId}`}>{editions.get(p.editionId)?.name}</a></td><td>{p.bib}</td><td>{p.teamName}</td><td>{p.status}</td></tr>
+        <p className="muted" style={{ margin: '2px 0 10px' }}>{[r.nation, r.team, age != null ? `${age} Jahre` : null, r.riderType].filter(Boolean).join(' · ') || 'Noch keine Angaben'}</p>
+        <div className="fields">
+          {FIELDS.map((f) => (
+            <label key={`${r.id}-${f.key}`} className="field">{f.label}
+              <CommitInput type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={r[f.key] as string | number | undefined} onCommit={(v) => saveField(f.key, v, f.type)} />
+            </label>
           ))}
-        </tbody>
-      </table>
+          <label key={`${r.id}-pcs`} className="field">PCS-Adresse oder -Kennung
+            <CommitInput value={r.pcsSlug} placeholder="tadej-pogacar" onCommit={(v) => { const s = pcsSlugFrom(v) ?? (v.trim() || undefined); if (s !== r.pcsSlug) void updateRider(r.id, { pcsSlug: s }); }} />
+          </label>
+        </div>
+        <PcsPaste rider={r} />
+      </div>
+
+      <div className="panel">
+        {RIDER_SECTIONS.map((s) => (
+          <div className="section" key={s.key}>
+            <div className="section-head">
+              <h3>{s.label}</h3><span className="hint">{s.hint}</span>
+              {s.key === 'aktuell' && r.aktuellAt && <span className={`small ${stale != null && stale > 14 ? 'warn' : 'muted'}`} style={{ marginLeft: 'auto' }}>zuletzt geändert {fmtDate(r.aktuellAt)}{stale != null && stale > 0 ? ` (vor ${stale} ${stale === 1 ? 'Tag' : 'Tagen'})` : ''}</span>}
+            </div>
+            <RichField label={`${s.label} – ${r.name}`} value={r.sections[s.key]} onSave={(h) => saveRiderSection(r.id, s.key, h)} placeholder={s.hint} minLines={s.key === 'aktuell' ? 4 : 3} />
+          </div>
+        ))}
+      </div>
+
+      <div className="panel">
+        <div className="row"><h2 className="grow">Themen zu {r.name}</h2>
+          <button className="btn small" onClick={async () => { const t = await createTopic({ kind: 'notiz', riderIds: [r.id] }); go(`themen-${t.id}`); }}>+ Thema</button>
+        </div>
+        {topics.length ? <TopicCards topics={topics} /> : <p className="muted small">Noch keine Statistiken, Geschichten oder Zitate mit diesem Fahrer verknüpft.</p>}
+      </div>
+
+      <div className="panel">
+        <h2>Rennen</h2>
+        {races.length ? (
+          <ul>{races.map(({ race, entry }) => <li key={entry.id}><a href={`#rennen-${race.id}`}>{race.name} {race.year}</a>{entry.bib ? ` · Nr. ${entry.bib}` : ''}{entry.team ? ` · ${entry.team}` : ''}</li>)}</ul>
+        ) : <p className="muted small">Noch in keiner Startliste. Füge die Startliste eines Rennens ein – Profile werden über den Namen automatisch verknüpft.</p>}
+      </div>
+    </>
+  );
+}
+
+/** Kopierte PCS-Fahrerseite einfügen: füllt nur leere Felder und Abschnitte. */
+function PcsPaste({ rider }: { rider: Rider }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [force, setForce] = useState(false);
+  const [msg, setMsg] = useState('');
+  const page = useMemo(() => parsePcsRiderPages(text)[0], [text]);
+  const matches = page ? pageMatchesRider(page, rider) : false;
+  const res = page ? pcsPagePatch(rider, page) : null;
+  const apply = async () => {
+    if (!res || !res.changes.length) return;
+    await createRestorePoint(`Vor PCS-Übernahme ${rider.name}`);
+    await updateRider(rider.id, res.patch);
+    setMsg(`Übernommen: ${res.changes.join(', ')}.`); setText(''); setForce(false); setOpen(false);
+  };
+  return (
+    <div style={{ marginTop: 10 }}>
+      {!open ? (
+        <div className="row">
+          <button className="btn small" onClick={() => { setOpen(true); setMsg(''); }}>PCS-Seite einfügen …</button>
+          {msg && <span className="small okc">{msg}</span>}
+        </div>
+      ) : (
+        <div className="banner">
+          <p className="small" style={{ marginTop: 0 }}>Öffne die PCS-Seite von {rider.name} (Knopf oben), drücke dort <b>Strg A</b> und <b>Strg C</b> und füge sie hier mit <b>Strg V</b> ein. Gefüllt werden nur leere Felder und leere Abschnitte (Erfolge, Person, Persönliches) – nichts Eigenes wird überschrieben.</p>
+          <textarea rows={3} style={{ width: '100%' }} value={text} onChange={(e) => setText(e.target.value)} placeholder="Kopierte PCS-Fahrerseite …" aria-label="PCS-Fahrerseite einfügen" autoFocus />
+          {text.trim() && !page && <p className="warn small">Keine PCS-Fahrerseite erkannt (die Zeile „Name:“ fehlt). Bitte die ganze Seite mit Strg A kopieren.</p>}
+          {page && !matches && <label className="check warn small"><input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> Die Seite gehört zu „{page.name}“{page.birthDate ? ` (${page.birthDate.slice(0, 4)})` : ''}, nicht eindeutig zu {rider.name}. Trotzdem übernehmen</label>}
+          {res && <p className="small">{res.changes.length ? <>Wird ergänzt: {res.changes.join(', ')}</> : 'Nichts Neues – alle Felder sind schon ausgefüllt.'}</p>}
+          <div className="row">
+            <button className="btn primary small" disabled={!res?.changes.length || (!matches && !force)} onClick={apply}>Übernehmen</button>
+            <button className="btn small" onClick={() => { setOpen(false); setText(''); }}>Abbrechen</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

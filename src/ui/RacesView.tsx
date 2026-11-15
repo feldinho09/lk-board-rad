@@ -1,201 +1,303 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, alive, mutate, newRecord } from '../db/db';
-import type { Edition, EditionFormat, EditionStatus, Participation, RaceSeries, Rider, Stage, StageType, StartStatus } from '../domain/types';
-import { START_STATUS_LABEL } from '../domain/types';
-import { seedDemo } from '../demo/demo';
-import { useApp } from './state';
-import { bibSort } from './LiveView';
-import { RichText } from './RichText';
+import { db, alive } from '../db/db';
+import { RACE_SECTIONS, STATUS_LABEL, type Entry, type EntryStatus, type Race, type Stage } from '../domain/types';
+import {
+  addRidersToRace, addStage, applyStartlist, createRace, createTopic, deleteRace, pcsRaceUrl, profileFromEntry, profilesByLastRace,
+  raceEntries, raceStages, removeEntry, removeStage, saveRaceSection, setEntryStatus, updateEntry, updateRace, updateStage, type StartlistResult,
+} from '../domain/center';
+import { parsePcsStartlist } from '../import/pcsPaste';
+import { createRestorePoint } from '../backup/archive';
+import { normalize } from '../domain/text';
+import { RichField } from './rich';
+import { PcsLink } from './pcs';
+import { CommitInput } from './inputs';
 import { confirmDialog } from './dialogs';
-
-type F<T> = Omit<T, 'id' | 'rev' | 'createdAt' | 'updatedAt'>;
-const STATUS_LABEL: Record<EditionStatus, string> = { geplant: 'geplant', laeuft: 'läuft', beendet: 'beendet', archiviert: 'archiviert' };
+import { fmtDate, go, PROFILE_LABEL, stageLabel, useCurrent } from './state';
+import { TopicCards } from './TopicsView';
 
 export function RacesView({ id }: { id?: string }) {
-  if (id) return <RaceDetail id={id} />;
-  return <RaceList />;
+  const races = useLiveQuery(async () => alive(await db.races.toArray()).sort((a, b) => (b.startDate ?? String(b.year)).localeCompare(a.startDate ?? String(a.year))), []) ?? [];
+  const [adding, setAdding] = useState(false);
+  return (
+    <main className="split">
+      <aside className="panel sidelist">
+        <div className="row">
+          <h2 className="grow" style={{ margin: 0 }}>Rennen</h2>
+          <button className="btn small primary" onClick={() => setAdding(true)}>+ Rennen</button>
+        </div>
+        <ul>
+          {races.map((r) => (
+            <li key={r.id}><a href={`#rennen-${r.id}`} className={r.id === id ? 'on' : ''}><span>{r.name}</span><span className="meta">{r.startDate ? fmtDate(r.startDate) : r.year}</span></a></li>
+          ))}
+          {!races.length && <li className="muted small" style={{ padding: 8 }}>Noch kein Rennen.</li>}
+        </ul>
+      </aside>
+      <section>
+        {adding ? <NewRace onDone={(rid) => { setAdding(false); if (rid) go(`rennen-${rid}`); }} />
+          : id ? <RaceEditor id={id} /> : <div className="panel empty-state">Rennen links auswählen oder neu anlegen.</div>}
+      </section>
+    </main>
+  );
 }
 
-function RaceList() {
-  const app = useApp();
-  const editions = useLiveQuery(() => db.editions.orderBy('startDate').reverse().toArray().then(alive), []) ?? [];
-  const [showArchived, setShowArchived] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const visible = editions.filter((e) => showArchived || e.status !== 'archiviert');
-
+function NewRace({ onDone }: { onDone: (id?: string) => void }) {
+  const cur = useCurrent();
+  const [name, setName] = useState('');
+  const [year, setYear] = useState(new Date().getFullYear() + (new Date().getMonth() > 9 ? 1 : 0));
+  const [kind, setKind] = useState<Race['kind']>('rundfahrt');
+  const [start, setStart] = useState('');
+  const [n, setN] = useState(21);
+  const [pcs, setPcs] = useState('');
+  const create = async () => {
+    if (!name.trim()) return;
+    const r = await createRace({ name, year, kind, startDate: start || undefined, stageCount: n, pcsUrl: pcs.trim() || undefined });
+    cur.setRace(r.id);
+    onDone(r.id);
+  };
   return (
-    <div className="page">
-      <h1>Rennen</h1>
-      <NewRaceForm />
-      <div className="row">
-        <button disabled={busy} onClick={async () => { setBusy(true); const id = await seedDemo(); app.setEdition(id); setBusy(false); }}>
-          Demo-Rundfahrt laden (fiktive Daten)
-        </button>
-        <label><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Archivierte anzeigen</label>
+    <div className="panel">
+      <h2>Neues Rennen</h2>
+      <div className="fields">
+        <label className="field">Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tour de France" autoFocus /></label>
+        <label className="field">Jahr<input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} /></label>
+        <label className="field">Art<select value={kind} onChange={(e) => setKind(e.target.value as Race['kind'])}><option value="rundfahrt">Rundfahrt</option><option value="eintages">Eintagesrennen</option></select></label>
+        <label className="field">Startdatum<input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></label>
+        {kind === 'rundfahrt' && <label className="field">Anzahl Etappen<input type="number" min={1} max={30} value={n} onChange={(e) => setN(Number(e.target.value))} /></label>}
+        <label className="field" style={{ gridColumn: 'span 2' }}>PCS-Adresse (optional)<input value={pcs} onChange={(e) => setPcs(e.target.value)} placeholder="https://www.procyclingstats.com/race/tour-de-france/2026" /></label>
       </div>
-      <table className="table">
-        <thead><tr><th>Name</th><th>Datum</th><th>Format</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          {visible.map((e) => (
-            <tr key={e.id}>
-              <td><a href={`#rennen-${e.id}`}>{e.name}</a>{e.dataOrigin === 'demo' && <span className="tag">DEMO</span>}</td>
-              <td>{e.startDate}</td>
-              <td>{e.format === 'etappen' ? 'Etappenrennen' : 'Eintagesrennen'}</td>
-              <td>{STATUS_LABEL[e.status]}</td>
-              <td>{app.editionId === e.id ? <strong>aktiv</strong> : <button className="small" onClick={() => app.setEdition(e.id)}>Aktivieren</button>}</td>
-            </tr>
-          ))}
-          {visible.length === 0 && <tr><td colSpan={5} className="muted">Noch keine Rennen.</td></tr>}
-        </tbody>
-      </table>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn primary" onClick={create} disabled={!name.trim()}>Anlegen</button>
+        <button className="btn" onClick={() => onDone()}>Abbrechen</button>
+      </div>
     </div>
   );
 }
 
-function NewRaceForm() {
-  const app = useApp();
-  const [name, setName] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [format, setFormat] = useState<EditionFormat>('eintages');
-  const [stages, setStages] = useState(5);
-  const [prolog, setProlog] = useState(false);
-  const [err, setErr] = useState('');
-
-  const create = async () => {
-    if (!name.trim()) return setErr('Name fehlt');
-    setErr('');
-    const id = await mutate(['series', 'editions', 'stages'], async (w) => {
-      const s = newRecord<F<RaceSeries>>({ name: name.trim() }) as RaceSeries;
-      await w.put('series', s);
-      const e = newRecord<F<Edition>>({
-        seriesId: s.id, name: name.trim(), year: Number(date.slice(0, 4)), format, startDate: date,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, status: 'geplant', bibScope: 'rennen', dataOrigin: 'manuell',
-      }) as Edition;
-      await w.put('editions', e);
-      const defs: [number, string, StageType][] = format === 'eintages'
-        ? [[1, 'Rennen', 'eintages']]
-        : [...(prolog ? [[0, 'Prolog', 'prolog'] as [number, string, StageType]] : []), ...Array.from({ length: stages }, (_, i) => [i + 1, `Etappe ${i + 1}`, 'strasse'] as [number, string, StageType])];
-      for (const [order, label, type] of defs) {
-        const d = new Date(date + 'T12:00:00');
-        d.setDate(d.getDate() + (prolog ? order : order - 1));
-        await w.put('stages', newRecord<F<Stage>>({ editionId: e.id, order, label, type, date: d.toISOString().slice(0, 10) }) as Stage);
-      }
-      return e.id;
-    });
-    app.setEdition(id);
-    setName('');
-  };
-
+function RaceEditor({ id }: { id: string }) {
+  const race = useLiveQuery(() => db.races.get(id), [id]);
+  const cur = useCurrent();
+  const [tab, setTab] = useState<'uebersicht' | 'etappen' | 'startliste'>('uebersicht');
+  const counts = useLiveQuery(async () => {
+    const es = alive(await db.entries.where('raceId').equals(id).toArray());
+    return { entries: es.length, profiles: es.filter((e) => e.riderId).length };
+  }, [id]);
+  if (race === undefined) return null;
+  if (!race || race.deleted) return <div className="panel empty-state">Dieses Rennen existiert nicht (mehr).</div>;
   return (
-    <fieldset className="form">
-      <legend>Neues Rennen</legend>
-      <label>Name <input value={name} onChange={(e) => setName(e.target.value)} required /></label>
-      <label>Datum <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-      <label>Format
-        <select value={format} onChange={(e) => setFormat(e.target.value as EditionFormat)}>
-          <option value="eintages">Eintagesrennen</option>
-          <option value="etappen">Etappenrennen</option>
-        </select>
-      </label>
-      {format === 'etappen' && (
-        <>
-          <label>Etappen <input type="number" min={1} max={30} value={stages} onChange={(e) => setStages(Number(e.target.value))} /></label>
-          <label><input type="checkbox" checked={prolog} onChange={(e) => setProlog(e.target.checked)} /> mit Prolog</label>
-        </>
-      )}
-      <button onClick={create}>Anlegen</button>
-      {err && <span className="err">{err}</span>}
-    </fieldset>
+    <>
+      <div className="panel">
+        <div className="row">
+          <h1 className="grow" style={{ fontSize: '2rem' }}>{race.name} {race.year}</h1>
+          {cur.race?.id !== race.id && <button className="btn small" onClick={() => cur.setRace(race.id)}>Als aktuelles Rennen wählen</button>}
+          <PcsLink url={pcsRaceUrl(race)}>PCS-Rennseite</PcsLink>
+          <button className="btn small danger" onClick={async () => { if (await confirmDialog(`${race.name} ${race.year} mit Etappen und Startliste löschen? Fahrerprofile bleiben erhalten.`, 'Löschen')) { await createRestorePoint(`Vor Löschen von ${race.name}`); await deleteRace(race.id); go('rennen'); } }}>Löschen</button>
+        </div>
+        <div className="fields" style={{ marginTop: 8 }}>
+          <label className="field">Name<CommitInput value={race.name} onCommit={(v) => v.trim() && updateRace(race.id, { name: v.trim() })} /></label>
+          <label className="field">Jahr<CommitInput type="number" value={race.year} onCommit={(v) => Number(v) && updateRace(race.id, { year: Number(v) })} /></label>
+          <label className="field">Start<CommitInput type="date" value={race.startDate} onCommit={(v) => updateRace(race.id, { startDate: v || undefined })} /></label>
+          <label className="field">Ende<CommitInput type="date" value={race.endDate} onCommit={(v) => updateRace(race.id, { endDate: v || undefined })} /></label>
+          <label className="field" style={{ gridColumn: 'span 2' }}>PCS-Adresse<CommitInput value={race.pcsUrl} placeholder="https://www.procyclingstats.com/race/…" onCommit={(v) => updateRace(race.id, { pcsUrl: v.trim() || undefined })} /></label>
+        </div>
+        <div className="subtabs" role="tablist">
+          <button role="tab" className={tab === 'uebersicht' ? 'on' : ''} onClick={() => setTab('uebersicht')}>Übersicht</button>
+          <button role="tab" className={tab === 'etappen' ? 'on' : ''} onClick={() => setTab('etappen')}>{race.kind === 'eintages' ? 'Strecke' : 'Etappen'}</button>
+          <button role="tab" className={tab === 'startliste' ? 'on' : ''} onClick={() => setTab('startliste')}>Startliste {counts ? <span className="muted small">{counts.entries} · {counts.profiles} Profile</span> : null}</button>
+        </div>
+        {tab === 'uebersicht' && <RaceSections race={race} />}
+        {tab === 'etappen' && <Stages race={race} />}
+        {tab === 'startliste' && <Startlist race={race} />}
+      </div>
+      {tab === 'uebersicht' && <RaceTopics race={race} />}
+    </>
   );
 }
 
-function RaceDetail({ id }: { id: string }) {
-  const app = useApp();
-  const edition = useLiveQuery(() => db.editions.get(id), [id]);
-  const stages = (useLiveQuery(() => db.stages.where('editionId').equals(id).toArray().then(alive), [id]) ?? []).sort((a, b) => a.order - b.order);
-  const parts = (useLiveQuery(() => db.participations.where('editionId').equals(id).toArray().then(alive), [id]) ?? []).sort(bibSort);
-  const riders = useLiveQuery(async () => new Map((await db.riders.bulkGet(parts.map((p) => p.riderId))).filter((r): r is Rider => !!r).map((r) => [r.id, r])), [parts]) ?? new Map();
-  if (!edition) return <p>Rennen nicht gefunden.</p>;
-  const live = app.mode === 'live';
-  const saveEdition = (patch: Partial<Edition>) => mutate(['editions'], (w) => w.put('editions', { ...edition, ...patch }));
-  const saveStage = (s: Stage, patch: Partial<Stage>) => mutate(['stages'], (w) => w.put('stages', { ...s, ...patch }));
-  const savePart = (p: Participation, patch: Partial<Participation>) => mutate(['participations'], (w) => w.put('participations', { ...p, ...patch }));
-
+function RaceSections({ race }: { race: Race }) {
   return (
-    <div className="page">
-      <p><a href="#rennen">← Rennen</a></p>
-      <h1>{edition.name} {edition.dataOrigin === 'demo' && <span className="tag">DEMO</span>}</h1>
-      <div className="rt-field" style={{ maxWidth: 900 }}><span className="rt-label">Notizen zum Rennen</span>
-        <RichText label="Notizen zum Rennen" placeholder="Hintergrund, Besonderheiten, Strecke …" value={edition.notes ?? ''} onChange={(h) => saveEdition({ notes: h || undefined })} />
-      </div>
-      <fieldset className="form" disabled={live}>
-        <legend>Stammdaten{live && ' (im Live-Modus gesperrt)'}</legend>
-        <label>Name <input defaultValue={edition.name} onBlur={(e) => e.target.value.trim() && e.target.value !== edition.name && saveEdition({ name: e.target.value.trim() })} /></label>
-        <label>Ort <input defaultValue={edition.location ?? ''} onBlur={(e) => e.target.value !== (edition.location ?? '') && saveEdition({ location: e.target.value })} /></label>
-        <label>Zeitzone <input defaultValue={edition.timezone} onBlur={(e) => e.target.value !== edition.timezone && saveEdition({ timezone: e.target.value })} /></label>
-        <label>Status
-          <select value={edition.status} onChange={async (e) => {
-            const v = e.target.value as EditionStatus;
-            if (v === 'archiviert' && !(await confirmDialog('Rennen archivieren? Es bleibt mit seinem Datenstand erhalten und kann wieder geöffnet werden.', 'Archivieren'))) return;
-            void saveEdition({ status: v });
-          }}>
-            {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </label>
-        <label>Startnummern eindeutig
-          <select value={edition.bibScope} onChange={(e) => saveEdition({ bibScope: e.target.value as 'rennen' | 'kategorie' })}>
-            <option value="rennen">pro Rennen</option><option value="kategorie">pro Kategorie</option>
-          </select>
-        </label>
-      </fieldset>
+    <>
+      {RACE_SECTIONS.map((s) => (
+        <div className="section" key={s.key}>
+          <div className="section-head"><h3>{s.label}</h3><span className="hint">{s.hint}</span></div>
+          <RichField label={`${s.label} – ${race.name}`} value={race.sections[s.key]} onSave={(h) => saveRaceSection(race.id, s.key, h)} placeholder={s.hint} />
+        </div>
+      ))}
+    </>
+  );
+}
 
-      <h2>Etappen / Läufe</h2>
-      <table className="table">
-        <thead><tr><th>Reihenfolge</th><th>Bezeichnung</th><th>Datum</th><th>Art</th><th>km</th></tr></thead>
+function RaceTopics({ race }: { race: Race }) {
+  const topics = useLiveQuery(async () => alive(await db.topics.where('raceId').equals(race.id).toArray()), [race.id]) ?? [];
+  return (
+    <div className="panel">
+      <div className="row"><h2 className="grow">Themen zum Rennen</h2>
+        <button className="btn small" onClick={async () => { const t = await createTopic({ kind: 'statistik', raceId: race.id }); go(`themen-${t.id}`); }}>+ Thema</button>
+      </div>
+      {topics.length ? <TopicCards topics={topics} /> : <p className="muted small">Statistiken, Geschichten und Zitate mit Bezug zu diesem Rennen erscheinen hier und in LIVE.</p>}
+    </div>
+  );
+}
+
+function Stages({ race }: { race: Race }) {
+  const stages = useLiveQuery(() => raceStages(race.id), [race.id]) ?? [];
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <>
+      <table className="tbl">
+        <thead><tr><th>Nr.</th><th>Datum</th><th>Start</th><th>Ziel</th><th>km</th><th>Profil</th><th>Notizen</th><th /></tr></thead>
         <tbody>
           {stages.map((s) => (
-            <tr key={s.id}>
-              <td><input type="number" step="0.5" defaultValue={s.order} disabled={live} onBlur={(e) => Number(e.target.value) !== s.order && saveStage(s, { order: Number(e.target.value) })} style={{ width: '5em' }} /></td>
-              <td><input defaultValue={s.label} disabled={live} onBlur={(e) => e.target.value !== s.label && saveStage(s, { label: e.target.value })} /></td>
-              <td><input type="date" defaultValue={s.date} disabled={live} onBlur={(e) => e.target.value !== s.date && saveStage(s, { date: e.target.value })} /></td>
-              <td>
-                <select value={s.type} disabled={live} onChange={(e) => saveStage(s, { type: e.target.value as StageType })}>
-                  <option value="strasse">Straße</option><option value="prolog">Prolog</option><option value="ezf">Einzelzeitfahren</option><option value="mzf">Mannschaftszeitfahren</option><option value="eintages">Eintagesrennen</option>
-                </select>
-              </td>
-              <td><input type="number" defaultValue={s.distanceKm ?? ''} disabled={live} onBlur={(e) => saveStage(s, { distanceKm: e.target.value ? Number(e.target.value) : undefined })} style={{ width: '6em' }} /></td>
-            </tr>
+            <StageRow key={s.id} s={s} race={race} open={open === s.id} onToggle={() => setOpen(open === s.id ? null : s.id)} />
           ))}
         </tbody>
       </table>
-      {!live && (
-        <button className="small" onClick={() => {
-          const last = stages[stages.length - 1];
-          void mutate(['stages'], (w) => w.put('stages', newRecord<F<Stage>>({ editionId: id, order: (last?.order ?? 0) + 1, label: `Etappe ${(last?.order ?? 0) + 1}`, date: last?.date ?? edition.startDate, type: 'strasse' }) as Stage));
-        }}>+ Etappe/Lauf</button>
-      )}
-      <p className="muted small">Halbetappen: Reihenfolge z. B. 3 und 3.5 mit Bezeichnung „Etappe 3a/3b“ – die Reihenfolge wird ausdrücklich gespeichert.</p>
+      {race.kind === 'rundfahrt' && <button className="btn small" style={{ marginTop: 8 }} onClick={() => addStage(race.id)}>+ Etappe</button>}
+    </>
+  );
+}
 
-      <h2>Teilnehmer ({parts.length}) <a className="small" href="#import">Startliste importieren</a></h2>
-      <table className="table">
-        <thead><tr><th>Nr.</th><th>Fahrer</th><th>Team (bei diesem Rennen)</th><th>Status</th><th>★</th></tr></thead>
-        <tbody>
-          {parts.map((p) => (
-            <tr key={p.id}>
-              <td>{p.bib}</td>
-              <td><a href={`#fahrer-${p.riderId}`}>{riders.get(p.riderId)?.displayName}</a></td>
-              <td>{p.teamName}</td>
-              <td>
-                <select value={p.status} onChange={(e) => savePart(p, { status: e.target.value as StartStatus })} aria-label="Startstatus">
-                  {Object.entries(START_STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </td>
-              <td><input type="checkbox" checked={p.favorite} onChange={(e) => savePart(p, { favorite: e.target.checked })} aria-label="Favorit" /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+function StageRow({ s, race, open, onToggle }: { s: Stage; race: Race; open: boolean; onToggle: () => void }) {
+  return (
+    <>
+      <tr>
+        <td style={{ width: 70 }}>{race.kind === 'rundfahrt' ? <CommitInput type="number" value={s.number} style={{ width: 56 }} onCommit={(v) => updateStage(s.id, { number: Number(v) })} aria-label="Etappennummer" /> : '–'}</td>
+        <td><CommitInput type="date" value={s.date} onCommit={(v) => updateStage(s.id, { date: v || undefined })} aria-label="Datum" /></td>
+        <td><CommitInput value={s.start} onCommit={(v) => updateStage(s.id, { start: v.trim() || undefined })} aria-label="Start" /></td>
+        <td><CommitInput value={s.finish} onCommit={(v) => updateStage(s.id, { finish: v.trim() || undefined })} aria-label="Ziel" /></td>
+        <td style={{ width: 90 }}><CommitInput type="number" value={s.distanceKm} style={{ width: 80 }} onCommit={(v) => updateStage(s.id, { distanceKm: v ? Number(v) : undefined })} aria-label="Distanz" /></td>
+        <td>
+          <select value={s.profile ?? ''} onChange={(e) => updateStage(s.id, { profile: (e.target.value || undefined) as Stage['profile'] })} aria-label="Profil">
+            <option value="">–</option>
+            {Object.entries(PROFILE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </td>
+        <td><button className="btn small" onClick={onToggle} aria-expanded={open}>{s.notes ? '✎ Notizen' : '+ Notizen'}</button></td>
+        <td>{race.kind === 'rundfahrt' && <button className="btn small danger" title="Etappe entfernen" onClick={async () => { if (await confirmDialog(`${stageLabel(s)} entfernen?`, 'Entfernen')) await removeStage(s.id); }}>✕</button>}</td>
+      </tr>
+      {open && (
+        <tr><td colSpan={8}>
+          <RichField label={`Notizen ${stageLabel(s, race.kind)}`} value={s.notes} onSave={(h) => updateStage(s.id, { notes: h })} placeholder="Schlüsselstellen, Anstiege, Wind, Zielankunft, Favoriten …" minLines={4} />
+        </td></tr>
+      )}
+    </>
+  );
+}
+
+function Startlist({ race }: { race: Race }) {
+  const entries = useLiveQuery(() => raceEntries(race.id), [race.id]) ?? [];
+  const [paste, setPaste] = useState(false);
+  const [carry, setCarry] = useState(false);
+  const [q, setQ] = useState('');
+  const shown = useMemo(() => { const n = normalize(q); return n ? entries.filter((e) => normalize(`${e.bib ?? ''} ${e.name} ${e.team ?? ''}`).includes(n)) : entries; }, [entries, q]);
+  return (
+    <>
+      <div className="row">
+        <PcsLink url={race.pcsUrl ? `${race.pcsUrl.replace(/\/$/, '')}/startlist` : pcsRaceUrl(race)}>PCS-Startliste</PcsLink>
+        <button className="btn small primary" onClick={() => { setPaste(!paste); setCarry(false); }}>Startliste einfügen …</button>
+        <button className="btn small" onClick={() => { setCarry(!carry); setPaste(false); }}>Profil-Fahrer übernehmen …</button>
+        <span className="grow" />
+        <input type="search" placeholder="Filtern …" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Startliste filtern" style={{ width: 200 }} />
+      </div>
+      {paste && <StartlistPaste race={race} onDone={() => setPaste(false)} />}
+      {carry && <CarryRiders race={race} entries={entries} onDone={() => setCarry(false)} />}
+      {entries.length ? (
+        <table className="tbl" style={{ marginTop: 10 }}>
+          <thead><tr><th>Nr.</th><th>Name</th><th>Team</th><th>Profil</th><th>Status</th><th /></tr></thead>
+          <tbody>{shown.map((e) => <EntryRow key={e.id} e={e} race={race} />)}</tbody>
+        </table>
+      ) : <p className="muted" style={{ marginTop: 12 }}>Noch keine Startliste. Öffne die Startliste auf PCS, kopiere sie (Strg A, Strg C) und füge sie hier ein – oder übernimm deine Profil-Fahrer.</p>}
+    </>
+  );
+}
+
+function EntryRow({ e, race }: { e: Entry; race: Race }) {
+  const [note, setNote] = useState(false);
+  return (
+    <>
+      <tr className={e.status !== 'aktiv' ? 'out' : ''}>
+        <td style={{ width: 70 }}><CommitInput value={e.bib} style={{ width: 56 }} onCommit={(v) => updateEntry(e.id, { bib: v.trim() || undefined })} aria-label={`Startnummer ${e.name}`} /></td>
+        <td>{e.riderId ? <a href={`#fahrer-${e.riderId}`}>{e.name}</a> : e.name}</td>
+        <td className="small">{e.team}</td>
+        <td>{e.riderId ? <span className="chip flag">Profil</span> : <button className="btn small" onClick={async () => { const r = await profileFromEntry(e.id); go(`fahrer-${r.id}`); }}>+ Profil</button>}</td>
+        <td>
+          <select value={e.status} onChange={(ev) => setEntryStatus(e.id, ev.target.value as EntryStatus)} aria-label={`Status ${e.name}`}>
+            {Object.entries(STATUS_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </td>
+        <td style={{ whiteSpace: 'nowrap' }}>
+          <button className="btn small" onClick={() => setNote(!note)} aria-expanded={note} title="Notiz zu diesem Fahrer bei diesem Rennen">{e.note ? '✎ Notiz' : '+ Notiz'}</button>{' '}
+          <button className="btn small danger" title="Aus der Startliste entfernen" onClick={async () => { if (await confirmDialog(`${e.name} aus der Startliste von ${race.name} entfernen?`, 'Entfernen')) await removeEntry(e.id); }}>✕</button>
+        </td>
+      </tr>
+      {note && <tr><td colSpan={6}><RichField label={`Notiz ${e.name} bei ${race.name}`} value={e.note} onSave={(h) => updateEntry(e.id, { note: h })} placeholder="Rolle im Team, Ziel bei diesem Rennen …" /></td></tr>}
+    </>
+  );
+}
+
+function StartlistPaste({ race, onDone }: { race: Race; onDone: () => void }) {
+  const [text, setText] = useState('');
+  const [removeMissing, setRemoveMissing] = useState(false);
+  const [res, setRes] = useState<StartlistResult | null>(null);
+  const parsed = useMemo(() => (text.trim() ? parsePcsStartlist(text) : null), [text]);
+  const apply = async () => {
+    if (!parsed) return;
+    await createRestorePoint(`Vor Startliste ${race.name}`);
+    setRes(await applyStartlist(race.id, parsed.entries.map((e) => ({ bib: e.bib, name: e.name, team: e.team })), { removeMissing }));
+    setText('');
+  };
+  return (
+    <div className="banner">
+      <p className="small" style={{ marginTop: 0 }}>Öffne die Startliste auf PCS (Knopf „PCS-Startliste“), drücke dort <b>Strg A</b> und <b>Strg C</b> und füge sie hier mit <b>Strg V</b> ein. Bestehende Einträge, Notizen und Status bleiben erhalten; Profile werden über den Namen verknüpft.</p>
+      <textarea rows={4} style={{ width: '100%' }} value={text} onChange={(e) => { setText(e.target.value); setRes(null); }} placeholder="Kopierte PCS-Startliste …" aria-label="PCS-Startliste einfügen" autoFocus />
+      {text.trim() && !parsed && <p className="warn small">Keine PCS-Startliste erkannt. Bitte die ganze Startlisten-Seite mit Strg A kopieren.</p>}
+      {parsed && (
+        <p className="small">
+          Erkannt: <b>{parsed.entries.length} Fahrer</b> in {parsed.teams.length} Teams{parsed.meta.raceName ? ` – ${parsed.meta.raceName} ${parsed.meta.year ?? ''}` : ''}.
+          {parsed.warnings.map((w, i) => <span key={i} className="warn"> {w}</span>)}
+        </p>
+      )}
+      {parsed && <label className="check small"><input type="checkbox" checked={removeMissing} onChange={(e) => setRemoveMissing(e.target.checked)} /> Fahrer entfernen, die nicht mehr in der Liste stehen</label>}
+      {res && <p className="small okc">Übernommen: {res.added} neu, {res.updated} aktualisiert, {res.unchanged} unverändert{res.removed ? `, ${res.removed} entfernt` : ''}. {res.withProfile} Fahrer mit Profil{res.linked ? ` (${res.linked} neu verknüpft)` : ''}.</p>}
+      <div className="row">
+        <button className="btn primary small" disabled={!parsed} onClick={apply}>Übernehmen</button>
+        <button className="btn small" onClick={onDone}>Schliessen</button>
+      </div>
+    </div>
+  );
+}
+
+/** Profil-Fahrer in dieses Rennen übernehmen (wenn sie starten). Zuletzt gefahrene zuerst. */
+function CarryRiders({ race, entries, onDone }: { race: Race; entries: Entry[]; onDone: () => void }) {
+  const list = useLiveQuery(profilesByLastRace, []) ?? [];
+  const inRace = new Set(entries.map((e) => e.riderId).filter(Boolean));
+  const avail = list.filter((x) => !inRace.has(x.rider.id));
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState('');
+  const shown = avail.filter((x) => !q || normalize(`${x.rider.name} ${x.rider.team ?? ''}`).includes(normalize(q)));
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const apply = async () => { await addRidersToRace(race.id, [...sel]); setSel(new Set()); onDone(); };
+  return (
+    <div className="banner">
+      <p className="small" style={{ marginTop: 0 }}>Wähle die Profil-Fahrer, die bei {race.name} starten. Ihre Profile (Aktuell, Erfolge, Persönliches …) sind damit in LIVE verfügbar. Steht der Fahrer schon ohne Profil in der Startliste, wird er verknüpft.</p>
+      <div className="row">
+        <input type="search" placeholder="Filtern …" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Profile filtern" />
+        <button className="btn small" onClick={() => setSel(new Set(shown.map((x) => x.rider.id)))}>alle angezeigten</button>
+        <button className="btn small" onClick={() => setSel(new Set())}>keine</button>
+      </div>
+      <div style={{ columns: '260px', marginTop: 8 }}>
+        {shown.map(({ rider, lastRace }) => (
+          <label key={rider.id} className="check" style={{ display: 'flex', breakInside: 'avoid' }}>
+            <input type="checkbox" checked={sel.has(rider.id)} onChange={() => toggle(rider.id)} /> {rider.name}
+            <span className="muted small">{[rider.team, lastRace ? `zuletzt ${lastRace.name} ${lastRace.year}` : null].filter(Boolean).join(' · ')}</span>
+          </label>
+        ))}
+        {!shown.length && <p className="muted small">{list.length ? 'Alle Profil-Fahrer sind schon im Rennen.' : 'Noch keine Profile angelegt.'}</p>}
+      </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="btn primary small" disabled={!sel.size} onClick={apply}>{sel.size} übernehmen</button>
+        <button className="btn small" onClick={onDone}>Schliessen</button>
+      </div>
     </div>
   );
 }

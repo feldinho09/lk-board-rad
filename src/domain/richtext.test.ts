@@ -15,9 +15,10 @@ describe('Formatierter Text', () => {
   });
 
   it('Markierung nur in Palettenfarben; execCommand-rgb wird normalisiert, fremde Farben entfernt', () => {
-    expect(sanitize('<div><span style="background-color: rgb(255, 241, 168);">wichtig</span></div>')).toBe('<div><span style="background-color:#fff1a8">wichtig</span></div>');
+    expect(sanitize('<div><span style="background-color: rgb(255, 224, 102);">wichtig</span></div>')).toBe('<div><span style="background-color:#ffe066">wichtig</span></div>');
+    expect(sanitize('<div><span style="background-color: rgb(255, 168, 168);">Sturz</span></div>')).toBe('<div><span style="background-color:#ffa8a8">Sturz</span></div>');
     expect(sanitize('<div><span style="background-color: rgb(1, 2, 3);">x</span></div>')).toBe('<div>x</div>');
-    expect(sanitize('<div><mark>Word-Markierung</mark></div>')).toContain('background-color:#fff1a8');
+    expect(sanitize('<div><mark>Word-Markierung</mark></div>')).toContain('background-color:#ffe066');
     expect(sanitize('<div><span style="background-color: transparent;">weg</span></div>')).toBe('<div>weg</div>');
   });
 
@@ -36,5 +37,19 @@ describe('Formatierter Text', () => {
 
   it('Klartext für Suche/Export: Aufzählungen und Zeilen bleiben lesbar', () => {
     expect(toPlain('<div><b>Titel</b><ul><li>eins<ul><li>zwei</li></ul></li><li>drei</li></ul>Ende</div>')).toBe('Titel\n• eins\n  • zwei\n• drei\nEnde');
+  });
+});
+
+describe('Stern-Zeilen für LIVE', () => {
+  it('holt ★-Zeilen nach oben und lässt den Rest stehen', async () => {
+    const { splitStarred } = await import('./richtext');
+    const r = splitStarred('<div><ul><li>★ Wichtig</li><li>Normal</li><li>Mit <b>Unterpunkt</b><ul><li>★ tief</li></ul></li></ul><div>★ Absatz</div>Ende</div>');
+    expect(r.starred).toEqual(['Wichtig', 'tief', 'Absatz']);
+    expect(r.rest).toContain('Normal');
+    expect(r.rest).toContain('Unterpunkt');
+    expect(r.rest).toContain('Ende');
+    expect(r.rest).not.toContain('★');
+    expect(splitStarred('Klartext\n★ oben').starred).toEqual(['<div>oben</div>']);
+    expect(splitStarred('')).toEqual({ starred: [], rest: '' });
   });
 });

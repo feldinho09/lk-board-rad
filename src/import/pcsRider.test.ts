@@ -3,7 +3,7 @@
  * Gegen zwei echte Kopien wurde lokal geprüft (nicht im Repository, PCS-Nutzungsbedingungen).
  */
 import { describe, it, expect } from 'vitest';
-import { applyPcsPage, pageMatchesRider, parsePcsRiderPages, riderTypeFrom, teamSpans, topResultDe } from './pcsRider';
+import { pcsPagePatch, pageMatchesRider, parsePcsRiderPages, riderTypeFrom, teamSpans, topResultDe } from './pcsRider';
 import type { Rider } from '../domain/types';
 
 const PAGE_A = `
@@ -77,8 +77,7 @@ Key statistics
 `;
 
 const rider = (first: string, last: string, extra: Partial<Rider> = {}): Rider => ({
-  id: first, firstName: first, lastName: last, displayName: `${first} ${last}`, aliases: [], externalIds: [], keyFacts: [], tags: [], searchTokens: [],
-  rev: 1, createdAt: '', updatedAt: '', ...extra,
+  id: first, firstName: first, lastName: last, name: `${first} ${last}`, sections: {}, searchKey: '', rev: 1, createdAt: '', updatedAt: '', ...extra,
 } as Rider);
 
 describe('PCS-Fahrerseite', () => {
@@ -123,16 +122,21 @@ describe('PCS-Fahrerseite', () => {
     expect(pageMatchesRider(p, rider('Jonas', 'Muster'))).toBe(false);
   });
 
-  it('Übernahme: nur leere Felder, Akzente, Schlüsselfakten nur wenn leer, Quelle', () => {
+  it('Übernahme: nur leere Felder und leere Abschnitte, Akzente', () => {
     const [p] = parsePcsRiderPages(PAGE_A);
-    const a = applyPcsPage(rider('Jonas', 'Brandli', { nationality: 'LIE', heightCm: 180, sources: 'Startliste' }), p, '2026-11-13');
-    expect(a).toMatchObject({ firstName: 'Jonas', lastName: 'Brändli', displayName: 'Jonas Brändli', nationality: 'LIE', heightCm: 180, weightKg: 68, birthDate: '1998-04-12', riderType: 'Zeitfahrer', careerWins: 11 });
-    expect(a.aliases).toContain('Jonas Brandli');
-    expect(a.keyFacts).toEqual(p.topResults.slice(0, 3));
-    expect(a.sources).toBe('Startliste; ProCyclingStats, kopiert (2026-11-13)');
-    const own = applyPcsPage(rider('Jonas', 'Brändli', { keyFacts: ['Eigener Fakt'], riderType: 'Allrounder' }), p);
-    expect(own.keyFacts).toEqual(['Eigener Fakt']);
-    expect(own.riderType).toBe('Allrounder');
+    const { patch, changes } = pcsPagePatch(rider('Jonas', 'Brandli', { nation: 'LIE', heightCm: 180 }), p, 2026);
+    expect(patch).toMatchObject({ name: 'Jonas Brändli', firstName: 'Jonas', lastName: 'Brändli', weightKg: 68, birthDate: '1998-04-12', riderType: 'Zeitfahrer', birthPlace: 'Zürich', team: 'Team Alpenblick' });
+    expect(patch.nation).toBeUndefined();
+    expect(patch.heightCm).toBeUndefined();
+    expect(patch.sections?.erfolge).toBe('<div><ul><li>11 Profisiege (laut PCS)</li><li>3× Gesamtsieg Tour de Romandie (2022–2024)</li><li>2× Weltmeister Zeitfahren (2024, 2025)</li><li>2 Etappensiege Tour de France (2023, 2025)</li><li>Sieg Strade Bianche (2021)</li><li>2. Gesamt Tour de Suisse (2020)</li><li>5. Il Lombardia (2019)</li></ul></div>');
+    expect(patch.sections?.person).toBe('<div><b>Teams</b></div><div><ul><li>2025–2026 Team Alpenblick (Vertrag bis 2028)</li><li>2023–2024 Team Bergwerk</li><li>2019 Team Jura</li></ul></div>');
+    expect(patch.sections?.persoenlich).toContain('Mia Brändli (Schwester)');
+    expect(changes).toEqual(expect.arrayContaining(['Schreibweise Jonas Brändli', 'Persönliches (Familie)']));
+    // eigene Texte bleiben
+    const own = pcsPagePatch(rider('Jonas', 'Brändli', { riderType: 'Allrounder', sections: { erfolge: '<div>Eigene Liste</div>' } }), p, 2026);
+    expect(own.patch.riderType).toBeUndefined();
+    expect(own.patch.sections?.erfolge).toBe('<div>Eigene Liste</div>');
+    expect(own.patch.name).toBeUndefined();
   });
 
   it('Teamstationen zusammengefasst', () => {

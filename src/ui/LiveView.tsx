@@ -1,505 +1,195 @@
-import { CareerInfo } from './PcsRiderPanel';
-import { PalmaresList, physicalLine } from './PalmaresView';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, alive, mutate, newRecord, nowIso } from '../db/db';
-import type {
-  ClassificationKind, ClassificationStanding, Edition, Note, Participation, RaceEvent, RaceGroup, Rider, Stage,
-} from '../domain/types';
-import { CLASSIFICATION_LABEL, START_STATUS_LABEL } from '../domain/types';
-import { resolveStanding } from '../domain/standings';
-import { ageAt, formatClock, formatDuration, formatGap } from '../domain/text';
-import { useApp, isTyping } from './state';
-import { currentRaceClockSec } from './RaceClock';
-import { pcsDisplayName } from './PcsRankingPanel';
-import { LiveSearch } from './LiveSearch';
-import { RichView } from './RichText';
-import { TopicDocs } from './TopicDocs';
-import { isRich } from '../domain/richtext';
+import { db, alive, getDevice, setDevice } from '../db/db';
+import { RACE_SECTIONS, RIDER_SECTIONS, STATUS_LABEL, type Entry, type Race, type Rider, type Stage, type Topic } from '../domain/types';
+import { ageOn, raceEntries, topicsFor } from '../domain/center';
+import { normalize } from '../domain/text';
+import { LiveText, RichView } from './rich';
+import { PROFILE_LABEL, fmtDate, stageLabel, useCurrent } from './state';
+import { PcsLink } from './pcs';
+import { pcsRiderUrl } from '../domain/center';
 
-export function bibSort(a: { bib: string }, b: { bib: string }): number {
-  const na = Number(a.bib), nb = Number(b.bib);
-  if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
-  return a.bib.localeCompare(b.bib, 'de', { numeric: true });
-}
-
-const fmtTime = (iso: string) => new Date(iso).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-
+/**
+ * LIVE: links das Feld, Mitte die Fahrerkarte (★-Zeilen zuoberst), rechts Etappe und Rennen.
+ * Nur Lesen – bearbeitet wird in „Fahrer“, „Rennen“ und „Themen“.
+ * Tastatur: Ziffer = Startnummer, Buchstabe oder / = Namenssuche, Esc = schliessen.
+ */
 export function LiveView() {
-  const app = useApp();
-  const edition = useLiveQuery(() => (app.editionId ? db.editions.get(app.editionId) : undefined), [app.editionId]);
-  const stages = useLiveQuery(() => (app.editionId ? db.stages.where('editionId').equals(app.editionId).toArray().then(alive) : []), [app.editionId]) ?? [];
-  const parts = useLiveQuery(() => (app.editionId ? db.participations.where('editionId').equals(app.editionId).toArray().then(alive) : []), [app.editionId]) ?? [];
-  const riders = useLiveQuery(async () => {
-    const rs = await db.riders.bulkGet(parts.map((p) => p.riderId));
-    return new Map(rs.filter((r): r is Rider => !!r).map((r) => [r.id, r]));
-  }, [parts]) ?? new Map<string, Rider>();
-  const standings = useLiveQuery(() => (app.editionId ? db.standings.where('editionId').equals(app.editionId).toArray().then(alive) : []), [app.editionId]) ?? [];
+  const cur = useCurrent();
+  const race = cur.race;
+  const entries = useLiveQuery(() => (race ? raceEntries(race.id) : Promise.resolve([] as Entry[])), [race?.id]) ?? [];
+  const riders = useLiveQuery(async () => new Map(alive(await db.riders.toArray()).map((r) => [r.id, r])), []) ?? new Map<string, Rider>();
+  const topics = useLiveQuery(async () => alive(await db.topics.toArray()), []) ?? [];
+  const [sel, setSel] = useState<string | null>(null);
+  const [onlyProfiles, setOnlyProfiles] = useState(false);
+  const [qs, setQs] = useState<string | null>(null);
 
-  const sortedStages = useMemo(() => [...stages].sort((a, b) => a.order - b.order), [stages]);
-  const stage = useMemo(() => {
-    if (!sortedStages.length) return null;
-    const chosen = sortedStages.find((s) => s.id === app.stageId);
-    if (chosen) return chosen;
-    const withResults = sortedStages.filter((s) => standings.some((st) => st.stageId === s.id && st.kind === 'etappe'));
-    return withResults[withResults.length - 1] ?? sortedStages[0];
-  }, [sortedStages, app.stageId, standings]);
+  useEffect(() => { void getDevice<string | null>(`liveSel:${race?.id}`, null).then(setSel); }, [race?.id]);
+  const choose = (id: string) => { setSel(id); if (race) void setDevice(`liveSel:${race.id}`, id); };
 
-  if (!app.editionId || !edition) {
-    return (
-      <div className="empty">
-        <h2>Kein aktives Rennen</h2>
-        <p>Oben ein Rennen wählen, unter <a href="#rennen">Rennen</a> anlegen oder dort das Demo-Rennen laden.</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (qs !== null || e.ctrlKey || e.metaKey || e.altKey || t.closest('input, textarea, select, [contenteditable]')) return;
+      if (/^[0-9]$/.test(e.key) || /^\p{L}$/u.test(e.key)) { e.preventDefault(); setQs(e.key); }
+      else if (e.key === '/') { e.preventDefault(); setQs(''); }
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [qs]);
+
+  if (!cur.ready) return null;
+  if (!race) return <main><div className="panel empty-state">Noch kein Rennen. Lege unter <a href="#rennen">Rennen</a> eines an und füge die Startliste ein.</div></main>;
+
+  const entry = entries.find((e) => e.id === sel);
+  const groups = groupByTeam(entries.filter((e) => !onlyProfiles || e.riderId));
 
   return (
     <div className="live-board">
-      <section className="col-left" aria-label="Startliste">
-        <StartList parts={parts} riders={riders} />
+      <nav className="startlist" aria-label="Startliste">
+        <div className="row" style={{ justifyContent: 'space-between', padding: '0 4px 6px' }}>
+          <button className="btn small" onClick={() => setQs('')} title="Suche: Ziffer für Startnummer, Buchstabe für Namen">Suchen <kbd className="muted small">/</kbd></button>
+          <label className="check small"><input type="checkbox" checked={onlyProfiles} onChange={(e) => setOnlyProfiles(e.target.checked)} /> nur Profile</label>
+        </div>
+        {!entries.length && <p className="muted small" style={{ padding: 6 }}>Keine Startliste. In <a href={`#rennen-${race.id}`}>Rennen</a> einfügen.</p>}
+        {groups.map(([team, list]) => (
+          <div key={team}>
+            <div className="team">{team || 'ohne Team'}</div>
+            {list.map((e) => (
+              <button key={e.id} className={`${e.id === sel ? 'on' : ''} ${e.status !== 'aktiv' ? 'out' : ''}`} onClick={() => choose(e.id)} title={e.status !== 'aktiv' ? STATUS_LABEL[e.status] : undefined}>
+                <span className="bib">{e.bib ?? ''}</span>
+                <span className="grow">{e.name}</span>
+                {e.riderId && <span className="dot" title="Profil vorhanden" />}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      <section aria-label="Fahrer">
+        {entry ? <RiderCard entry={entry} rider={entry.riderId ? riders.get(entry.riderId) : undefined} race={race} stage={cur.stage} topics={topics} />
+          : <div className="live-card empty-state">Fahrer wählen: links anklicken, Startnummer tippen oder Namen schreiben.</div>}
       </section>
-      <section className="col-mid" aria-label="Fahrerkarte">
-        <LiveSearch />
-        <MidTabs edition={edition} stage={stage}>
-          <RiderCards edition={edition} parts={parts} riders={riders} stage={stage} stages={sortedStages} standings={standings} />
-        </MidTabs>
-      </section>
-      <section className="col-right" aria-label="Rennsituation">
-        {stage && <StandingsPanel stage={stage} stages={sortedStages} standings={standings} riders={riders} />}
-        <GroupsPanel editionId={edition.id} stageId={stage?.id} riders={riders} parts={parts} />
-      </section>
-      <section className="bottom" aria-label="Notizen und Ereignisse">
-        <EventsPanel editionId={edition.id} stageId={stage?.id} riders={riders} />
-      </section>
+
+      <aside className="live-side" aria-label="Etappe und Rennen">
+        <StagePanel race={race} stage={cur.stage} topics={topics} />
+      </aside>
+
+      {qs !== null && <QuickSearch initial={qs} entries={entries} onPick={(id) => { choose(id); setQs(null); }} onClose={() => setQs(null)} />}
     </div>
   );
 }
 
-// ---------------------------------------------------------------- Reiter Mitte
-type MidTab = 'fahrer' | 'statistik' | 'thema';
-function MidTabs({ edition, stage, children }: { edition: Edition; stage: Stage | null; children: React.ReactNode }) {
-  const app = useApp();
-  const [tab, setTab] = useState<MidTab>('fahrer');
-  // Wer einen Fahrer wählt (Suche, Startliste, Rangliste), will die Fahrerkarte sehen
-  const first = useRef(true);
-  useEffect(() => { if (first.current) { first.current = false; return; } setTab('fahrer'); }, [app.selectedRiderId]);
-  const tabs: [MidTab, string][] = [['fahrer', 'Fahrer'], ['statistik', 'Statistiken'], ['thema', 'Themen']];
+function groupByTeam(entries: Entry[]): [string, Entry[]][] {
+  const m = new Map<string, Entry[]>();
+  for (const e of entries) m.set(e.team ?? '', [...(m.get(e.team ?? '') ?? []), e]);
+  return [...m];
+}
+
+function RiderCard({ entry, rider, race, stage, topics }: { entry: Entry; rider?: Rider; race: Race; stage?: Stage; topics: Topic[] }) {
+  const day = stage?.date ?? race.startDate ?? new Date().toISOString().slice(0, 10);
+  if (!rider) {
+    return (
+      <div className="live-card">
+        <div className="live-name"><span className="bibbig">{entry.bib}</span><h1>{entry.name}</h1></div>
+        <p className="live-facts">{entry.team}</p>
+        {entry.status !== 'aktiv' && <p className="err">{STATUS_LABEL[entry.status]}{entry.statusStage ? ` (Etappe ${entry.statusStage})` : ''}</p>}
+        <p className="muted">Kein Profil. In <a href={`#rennen-${race.id}`}>Rennen → Startliste</a> mit „+ Profil“ anlegen.</p>
+      </div>
+    );
+  }
+  const age = ageOn(rider.birthDate, day);
+  const rt = topicsFor(topics, { riderId: rider.id }).filter((t) => !t.raceId || t.raceId === race.id);
+  const facts: React.ReactNode[] = [];
+  if (rider.nation) facts.push(<b key="n">{rider.nation}</b>);
+  if (entry.team || rider.team) facts.push(<span key="t">{entry.team || rider.team}</span>);
+  if (age != null) facts.push(<span key="a"><b>{age}</b> Jahre</span>);
+  if (rider.riderType) facts.push(<span key="ty">{rider.riderType}</span>);
+  if (rider.heightCm || rider.weightKg) facts.push(<span key="hw">{[rider.heightCm ? `${rider.heightCm} cm` : '', rider.weightKg ? `${rider.weightKg} kg` : ''].filter(Boolean).join(' / ')}</span>);
+  if (rider.birthPlace) facts.push(<span key="bp">geb. in {rider.birthPlace}</span>);
+  if (rider.residence) facts.push(<span key="re">wohnt in {rider.residence}</span>);
+  return (
+    <div className="live-card">
+      <div className="live-name">
+        <span className="bibbig">{entry.bib}</span><h1>{rider.name}</h1>
+        <span className="grow" />
+        <a className="btn small" href={`#fahrer-${rider.id}`}>Bearbeiten</a>
+        <PcsLink url={pcsRiderUrl(rider)} />
+      </div>
+      <p className="live-facts">{facts.map((f, i) => <span key={i}>{i > 0 && ' · '}{f}</span>)}</p>
+      {rider.pronunciation && <p className="live-facts">Aussprache: <b>{rider.pronunciation}</b></p>}
+      {entry.status !== 'aktiv' && <p className="err" style={{ fontSize: '1.1rem' }}>{STATUS_LABEL[entry.status]}{entry.statusStage ? ` (Etappe ${entry.statusStage})` : ''}</p>}
+      {entry.note && <div className="live-sec"><h3>Bei diesem Rennen</h3><LiveText value={entry.note} /></div>}
+      <div className="live-sec"><h3>Aktuell{rider.aktuellAt ? <span className="muted small" style={{ textTransform: 'none', letterSpacing: 0 }}> · Stand {fmtDate(rider.aktuellAt)}</span> : null}</h3><LiveText value={rider.sections.aktuell} emptyText="Noch nichts Aktuelles erfasst." /></div>
+      {rt.length > 0 && (
+        <div className="live-sec"><h3>Themen</h3>{rt.map((t) => <LiveTopic key={t.id} t={t} />)}</div>
+      )}
+      {RIDER_SECTIONS.filter((s) => s.key !== 'aktuell').map((s) => rider.sections[s.key] ? (
+        <div className="live-sec" key={s.key}><h3>{s.label}</h3><LiveText value={rider.sections[s.key]} /></div>
+      ) : null)}
+    </div>
+  );
+}
+
+function LiveTopic({ t }: { t: Topic }) {
+  return (
+    <div style={{ margin: '6px 0', paddingLeft: 10, borderLeft: `3px solid ${t.starred ? 'var(--flag)' : 'var(--line)'}` }}>
+      <div className="small"><span className={`kind ${t.kind}`}>{t.kind}</span>{t.title ? <b> {t.title}</b> : null}{t.source ? <span className="muted"> · {t.source}</span> : null}</div>
+      <div className="live-text"><RichView value={t.body} /></div>
+    </div>
+  );
+}
+
+function StagePanel({ race, stage, topics }: { race: Race; stage?: Stage; topics: Topic[] }) {
+  const rt = topicsFor(topics, { raceId: race.id, stageNumber: stage?.number }).filter((t) => t.riderIds.length === 0 || t.starred);
   return (
     <>
-      <div className="tabs mid-tabs" role="tablist" aria-label="Ansicht Mitte">
-        {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
-      </div>
-      {tab === 'fahrer' ? children : <TopicDocs key={tab} kind={tab} editionId={edition.id} stage={stage} />}
+      {stage && (
+        <div className="panel">
+          <h2>{stageLabel(stage, race.kind)}{stage.date ? <span className="muted small"> · {fmtDate(stage.date, { weekday: 'short', day: 'numeric', month: 'numeric' })}</span> : null}</h2>
+          <p style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>{[stage.start, stage.finish].filter(Boolean).join(' – ')}{stage.distanceKm ? ` · ${stage.distanceKm} km` : ''}{stage.profile ? ` · ${PROFILE_LABEL[stage.profile]}` : ''}</p>
+          <LiveText value={stage.notes} emptyText="Keine Etappennotizen." />
+        </div>
+      )}
+      {RACE_SECTIONS.filter((s) => race.sections[s.key]).map((s) => (
+        <div className="panel" key={s.key}><h2>{s.label}</h2><LiveText value={race.sections[s.key]} /></div>
+      ))}
+      {rt.length > 0 && <div className="panel"><h2>Themen</h2>{rt.map((t) => <LiveTopic key={t.id} t={t} />)}</div>}
     </>
   );
 }
 
-// ---------------------------------------------------------------- Startliste
-function StartList({ parts, riders }: { parts: Participation[]; riders: Map<string, Rider> }) {
-  const app = useApp();
-  const [team, setTeam] = useState('');
-  const [onlyFav, setOnlyFav] = useState(false);
-  const [status, setStatus] = useState<'alle' | 'aktiv' | 'aus'>('alle');
-  const listRef = useRef<HTMLUListElement>(null);
-  const teams = useMemo(() => [...new Set(parts.map((p) => p.teamName))].sort(), [parts]);
-  const out = (p: Participation) => ['DNS', 'DNF', 'DSQ', 'OTL', 'HD'].includes(p.status);
-  // Feste Sortierung nach Startnummer – eingehende Daten sortieren nie um
-  const visible = useMemo(() => parts
-    .filter((p) => (!team || p.teamName === team) && (!onlyFav || p.favorite) && (status === 'alle' || (status === 'aus' ? out(p) : !out(p))))
-    .sort(bibSort), [parts, team, onlyFav, status]);
-  const filtered = team || onlyFav || status !== 'alle';
-
-  const move = (dir: number) => {
-    const i = visible.findIndex((p) => p.riderId === app.selectedRiderId);
-    const next = visible[Math.max(0, Math.min(visible.length - 1, i + dir))];
-    if (next) {
-      app.select(next.riderId);
-      listRef.current?.querySelector(`[data-rider="${next.riderId}"]`)?.scrollIntoView({ block: 'nearest' });
-    }
-  };
-
+function QuickSearch({ initial, entries, onPick, onClose }: { initial: string; entries: Entry[]; onPick: (id: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState(initial);
+  const [i, setI] = useState(0);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); const v = ref.current?.value.length ?? 0; ref.current?.setSelectionRange(v, v); }, []);
+  const hits = useMemo(() => {
+    const t = q.trim();
+    if (!t) return entries.slice(0, 12);
+    if (/^\d+$/.test(t)) return [...entries.filter((e) => e.bib === t), ...entries.filter((e) => e.bib !== t && e.bib?.startsWith(t))].slice(0, 12);
+    const n = normalize(t);
+    return entries.filter((e) => normalize(`${e.name} ${e.team ?? ''}`).split(' ').some((w) => w.startsWith(n)) || normalize(e.name).includes(n)).slice(0, 12);
+  }, [q, entries]);
   return (
-    <div className="panel startlist">
-      <div className="panel-head">
-        <h2>Startliste <span className="muted">({visible.length}/{parts.length})</span></h2>
-      </div>
-      <div className="filters">
-        <select aria-label="Team-Filter" value={team} onChange={(e) => setTeam(e.target.value)}>
-          <option value="">Alle Teams</option>
-          {teams.map((t) => <option key={t}>{t}</option>)}
-        </select>
-        <select aria-label="Status-Filter" value={status} onChange={(e) => setStatus(e.target.value as never)}>
-          <option value="alle">Alle</option><option value="aktiv">Im Rennen</option><option value="aus">Ausgeschieden</option>
-        </select>
-        <label><input type="checkbox" checked={onlyFav} onChange={(e) => setOnlyFav(e.target.checked)} /> ★</label>
-        {filtered && <button className="link" onClick={() => { setTeam(''); setOnlyFav(false); setStatus('alle'); }}>Filter zurücksetzen</button>}
-      </div>
-      {filtered && <div className="filter-note">Filter aktiv</div>}
-      <ul
-        ref={listRef}
-        className="riders"
-        tabIndex={0}
-        role="listbox"
-        aria-label="Fahrer"
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
-          if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-        }}
-      >
-        {visible.map((p) => {
-          const r = riders.get(p.riderId);
-          const sel = app.selectedRiderId === p.riderId;
-          return (
-            <li key={p.id} data-rider={p.riderId} role="option" aria-selected={sel} className={`${sel ? 'sel' : ''} ${out(p) ? 'out' : ''}`} onClick={() => app.select(p.riderId)}>
-              <span className="bib">{p.bib}</span>
-              <span className="name">{p.overrides.displayName ?? r?.displayName ?? '?'}</span>
-              <span className="team">{p.teamName}</span>
-              <span className="flags">
-                {p.favorite && <span title="Favorit" aria-label="Favorit">★</span>}
-                {app.pinned.includes(p.riderId) && <span title="Angeheftet" aria-label="Angeheftet">📌</span>}
-                {out(p) && <span className="st" title={START_STATUS_LABEL[p.status]}>{p.status}</span>}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- Fahrerkarten
-interface CardProps {
-  edition: Edition;
-  parts: Participation[];
-  riders: Map<string, Rider>;
-  stage: Stage | null;
-  stages: Stage[];
-  standings: ClassificationStanding[];
-}
-
-function RiderCards(props: CardProps) {
-  const app = useApp();
-  const sel = app.selectedRiderId;
-  const compare = app.pinned.filter((id) => id !== sel);
-  const selPart = props.parts.find((p) => p.riderId === sel);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || !sel) return;
-      if (e.key === 'p' || e.key === 'P') app.togglePin(sel);
-      if ((e.key === 'f' || e.key === 'F') && selPart) void mutate(['participations'], (w) => w.put('participations', { ...selPart, favorite: !selPart.favorite }));
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [sel, selPart, app]);
-
-  if (!sel) return <div className="panel empty-card"><p>Fahrer in der Startliste wählen oder mit <kbd>Strg K</kbd> suchen.</p></div>;
-  return (
-    <div className="cards">
-      <RiderCard {...props} riderId={sel} primary />
-      {compare.length > 0 && (
-        <div className="compare">
-          <h3>Vergleich / angeheftet</h3>
-          <div className="compare-grid">
-            {compare.map((id) => <RiderCard key={id} {...props} riderId={id} />)}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RiderCard({ edition, parts, riders, stage, stages, standings, riderId, primary }: CardProps & { riderId: string; primary?: boolean }) {
-  const app = useApp();
-  const r = riders.get(riderId);
-  const p = parts.find((x) => x.riderId === riderId);
-  const notes = useLiveQuery(() => db.notes.where('refId').anyOf([riderId, p?.id ?? '-']).toArray().then(alive), [riderId, p?.id]) ?? [];
-  const [details, setDetails] = useState(false);
-  const [fix, setFix] = useState(false);
-  if (!r) return null;
-  const pron = p?.overrides.pronunciation ?? r.pronunciation;
-  const age = ageAt(r.birthDate, stage?.date ?? edition.startDate);
-  const res = (kind: ClassificationKind) => {
-    if (!stage) return null;
-    const st = resolveStanding(kind, stage.id, stages, standings, formatClock);
-    const row = st.standing?.rows.find((x) => x.riderId === riderId);
-    return { st, row };
-  };
-  const stageRes = res('etappe');
-  const gcRes = res('gc');
-  const facts = [...r.keyFacts, ...notes.filter((n) => n.priority).map((n) => n.text)].slice(0, 3);
-  const pinned = app.pinned.includes(riderId);
-
-  return (
-    <article className={`panel card ${primary ? 'primary' : ''}`} aria-label={`Fahrerkarte ${r.displayName}`}>
-      <header className="card-head">
-        <span className="big-bib">{p?.bib ?? '—'}</span>
-        <div>
-          <h2 className="rider-name">{p?.overrides.displayName ?? r.displayName}</h2>
-          <div className="team-line">{p?.teamName ?? '–'} · {r.nationality ?? '–'}{age ? ` · ${age} J.` : ''}{r.birthPlace ? ` · geb. in ${r.birthPlace}` : ''}</div>
-        </div>
-        <div className="card-actions">
-          <button onClick={() => app.togglePin(riderId)} aria-pressed={pinned} title="Anheften (P)">{pinned ? 'Lösen' : 'Anheften'}</button>
-          {p && <button onClick={() => mutate(['participations'], (w) => w.put('participations', { ...p, favorite: !p.favorite }))} aria-pressed={p.favorite} title="Favorit (F)">{p.favorite ? '★ Favorit' : '☆ Favorit'}</button>}
-        </div>
-      </header>
-      <div className="pron">
-        <span className="label">Aussprache</span> <strong>{pron || 'nicht hinterlegt'}</strong>
-        {p?.overrides.pronunciation && <span className="tag" title="Nur in diesem Rennen">Rennkorrektur</span>}
-        {primary && <button className="link" onClick={() => setFix((v) => !v)}>Schnellkorrektur</button>}
-      </div>
-      {fix && p && <QuickFix rider={r} part={p} onDone={() => setFix(false)} />}
-      <div className="role">{r.riderType ?? 'Fahrertyp unbekannt'}{p && p.status !== 'aktiv' && p.status !== 'gemeldet' && <span className="st"> · {START_STATUS_LABEL[p.status]}</span>}</div>
-      {facts.length > 0 ? <ol className="facts">{facts.map((f, i) => <li key={i}><RichView value={f} inline={!isRich(f)} /></li>)}</ol> : <p className="muted">Keine Schlüsselfakten hinterlegt.</p>}
-      {stage && (
-        <dl className="results">
-          <div><dt>{stage.label}</dt><dd>{stageRes?.row ? (stageRes.row.rank ? `${stageRes.row.rank}. ${formatGap(stageRes.row.gapSec)}` : stageRes.row.status ?? '–') : stageRes?.st.standing ? 'nicht klassiert' : 'kein Ergebnis'}</dd></div>
-          <div><dt>{gcRes?.st.stage ? `Gesamt nach ${gcRes.st.stage.label}` : 'Gesamt'}</dt><dd>{gcRes?.row ? (gcRes.row.rank ? `${gcRes.row.rank}. ${formatGap(gcRes.row.gapSec)}` : gcRes.row.status ?? '–') : 'kein Stand'}</dd></div>
-        </dl>
-      )}
-      {primary && (
-        <>
-          <button className="link" onClick={() => setDetails((v) => !v)} aria-expanded={details}>{details ? 'Details ausblenden' : 'Details anzeigen'}</button>
-          {details && (
-            <div className="details">
-              {r.strengths && <div className="detail-row"><span className="label">Stärken</span> <RichView value={r.strengths} /></div>}
-              {r.bio && <div className="detail-row"><span className="label">Kurzbio</span> <RichView value={r.bio} /></div>}
-              {physicalLine(r) && <div className="detail-row"><span className="label">Person</span> {physicalLine(r)}</div>}
-              {(r.teamHistory?.length || r.topResults?.length || r.family?.length) ? <div className="detail-row"><CareerInfo r={r} compact /></div> : null}
-              {r.palmares && r.palmares.length > 0 && <div className="detail-row"><span className="label">Erfolge</span> <PalmaresList entries={r.palmares} compact years={2} /></div>}
-              <NotesList notes={notes} editionId={edition.id} />
-              <p className="muted small">Quellen: {r.sources ?? '–'} {r.lastVerifiedAt ? `· geprüft ${r.lastVerifiedAt}` : ''}</p>
-              <a href={`#fahrer-${r.id}`}>Profil bearbeiten</a>
-            </div>
-          )}
-        </>
-      )}
-    </article>
-  );
-}
-
-function NotesList({ notes, editionId }: { notes: Note[]; editionId: string }) {
-  if (!notes.length) return <p className="muted">Keine Notizen.</p>;
-  return (
-    <ul className="notes">
-      {notes.map((n) => {
-        const told = n.toldInEditions.includes(editionId);
-        return (
-          <li key={n.id} className={told ? 'told' : ''}>
-            <RichView value={n.text} />
-            <button className="link" onClick={() => mutate(['notes'], (w) => w.put('notes', { ...n, toldInEditions: told ? n.toldInEditions.filter((x) => x !== editionId) : [...n.toldInEditions, editionId] }))}>
-              {told ? '✓ erzählt' : 'als erzählt markieren'}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-/** Schnellkorrektur der Aussprache: Geltungsbereich vor dem Speichern sichtbar, Standard = dieses Rennen. */
-function QuickFix({ rider, part, onDone }: { rider: Rider; part: Participation; onDone: () => void }) {
-  const [val, setVal] = useState(part.overrides.pronunciation ?? rider.pronunciation ?? '');
-  const [scope, setScope] = useState<'rennen' | 'profil'>('rennen');
-  const save = async () => {
-    if (scope === 'rennen') await mutate(['participations'], (w) => w.put('participations', { ...part, overrides: { ...part.overrides, pronunciation: val } }));
-    else await mutate(['riders'], (w) => w.put('riders', { ...rider, pronunciation: val }));
-    onDone();
-  };
-  return (
-    <div className="quickfix">
-      <input value={val} onChange={(e) => setVal(e.target.value)} aria-label="Aussprache" />
-      <label><input type="radio" checked={scope === 'rennen'} onChange={() => setScope('rennen')} /> nur dieses Rennen</label>
-      <label><input type="radio" checked={scope === 'profil'} onChange={() => setScope('profil')} /> allgemeines Fahrerprofil</label>
-      <button onClick={save}>Speichern</button>
-      <button className="link" onClick={onDone}>Abbrechen</button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- Wertungen
-const COVERAGE_TXT = { vollstaendig: 'vollständig', teilweise: 'teilweise', nicht_veroeffentlicht: 'noch nicht veröffentlicht', nicht_verfuegbar: 'nicht verfügbar', fehlgeschlagen: 'Abruf fehlgeschlagen' } as const;
-const KINDS: ClassificationKind[] = ['etappe', 'gc', 'punkte', 'berg', 'nachwuchs', 'team'];
-
-function StandingsPanel({ stage, stages, standings, riders }: { stage: Stage; stages: Stage[]; standings: ClassificationStanding[]; riders: Map<string, Rider> }) {
-  const app = useApp();
-  const [kind, setKind] = useState<ClassificationKind>('etappe');
-  const resolved = resolveStanding(kind, stage.id, stages, standings, formatClock);
-  // Gerade gelesene Rangliste bleibt stehen, bis der Nutzer einen neuen Stand übernimmt
-  const [shownId, setShownId] = useState<string | null>(null);
-  const key = `${kind}|${stage.id}`;
-  const [shownKey, setShownKey] = useState(key);
-  useEffect(() => { setShownKey(key); setShownId(resolved.standing?.id ?? null); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shown = (shownKey === key && shownId ? standings.find((s) => s.id === shownId) : null) ?? resolved.standing;
-  const newer = resolved.standing && shown && resolved.standing.id !== shown.id;
-  const showLabel = shown && shown.id === resolved.standing?.id ? resolved.label : shown ? `${CLASSIFICATION_LABEL[kind]} – älterer Stand, Abruf ${formatClock(shown.fetchedAt)}` : resolved.label;
-
-  return (
-    <div className="panel standings">
-      <div className="tabs" role="tablist">
-        {KINDS.map((k) => (
-          <button key={k} role="tab" aria-selected={k === kind} className={k === kind ? 'on' : ''} onClick={() => setKind(k)}>
-            {({ etappe: 'Etappe', gc: 'Gesamt', punkte: 'Punkte', berg: 'Berg', nachwuchs: 'Nachwuchs', team: 'Team' } as const)[k]}
-          </button>
-        ))}
-      </div>
-      <div className={`standing-label ${resolved.exact ? '' : 'stale'}`}>{showLabel}</div>
-      {shown && <div className="muted small">Status: {shown.sourceStatus === 'vorlaeufig' ? 'vorläufig' : shown.sourceStatus === 'quelle_bestaetigt' ? 'bei der Quelle als bestätigt geführt' : 'unbekannt'} · Abdeckung: {COVERAGE_TXT[shown.coverage]} · Rev. {shown.sourceRevision}</div>}
-      {newer && <button className="new-standing" onClick={() => setShownId(resolved.standing!.id)}>Neuer Stand verfügbar – übernehmen</button>}
-      {shown ? (
-        <table className="table compact">
-          <thead><tr><th>#</th><th>{kind === 'team' ? 'Team' : 'Fahrer'}</th><th>{shown.unit === 'punkte' ? 'Punkte' : 'Rückstand'}</th></tr></thead>
-          <tbody>
-            {shown.rows.map((row, i) => {
-              const r = row.riderId ? riders.get(row.riderId) : undefined;
-              return (
-                <tr key={i} className={row.riderId && row.riderId === app.selectedRiderId ? 'sel' : ''} onClick={() => row.riderId && app.select(row.riderId)}>
-                  <td>{row.rank ?? row.status ?? '–'}</td>
-                  <td>{row.teamName ?? r?.displayName ?? (row.name ? <span title="Keinem Profil zugeordnet">{pcsDisplayName(row.name)} ⚠</span> : '(unbekannt)')}</td>
-                  <td>{shown.unit === 'punkte' ? row.points ?? '–' : row.rank === 1 ? formatDuration(row.timeSec) : row.sameTimeAsPrevious ? 'gl. Zeit' : formatGap(row.gapSec)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      ) : <p className="muted">Kein Stand vorhanden.</p>}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- Renngruppen
-function GroupsPanel({ editionId, stageId, riders, parts }: { editionId: string; stageId?: string; riders: Map<string, Rider>; parts: Participation[] }) {
-  const app = useApp();
-  const groups = (useLiveQuery(() => db.groups.where('editionId').equals(editionId).toArray().then(alive), [editionId]) ?? [])
-    .filter((g) => g.stageId === stageId).sort((a, b) => a.order - b.order);
-  const [, tick] = useState(0);
-  useEffect(() => { const t = setInterval(() => tick((x) => x + 1), 30_000); return () => clearInterval(t); }, []);
-  const addGroup = (name: string) => mutate(['groups'], (w) => w.put('groups', newRecord({ editionId, stageId, name, order: groups.length, riderIds: [], gapSec: null } as Omit<RaceGroup, 'id' | 'rev' | 'createdAt' | 'updatedAt'>)));
-  const setGap = (g: RaceGroup, v: string) => {
-    const parts2 = v.split(':').map(Number);
-    const sec = v.trim() === '' ? null : parts2.some(isNaN) ? undefined : parts2.reduce((a, p) => a * 60 + p, 0);
-    if (sec === undefined) return;
-    void mutate(['groups'], (w) => w.put('groups', { ...g, gapSec: sec, measuredAt: nowIso(), source: 'eigene Beobachtung' }));
-  };
-  const toggleMember = (g: RaceGroup, id: string) =>
-    mutate(['groups'], (w) => w.put('groups', { ...g, riderIds: g.riderIds.includes(id) ? g.riderIds.filter((x) => x !== id) : [...g.riderIds, id] }));
-  const bibOf = (id: string) => parts.find((p) => p.riderId === id)?.bib ?? '?';
-
-  return (
-    <div className="panel groups">
-      <div className="panel-head">
-        <h2>Renngruppen</h2>
-        <div>
-          {['Spitze', 'Verfolger', 'Feld'].filter((n) => !groups.some((g) => g.name === n)).map((n) => (
-            <button key={n} className="small" onClick={() => addGroup(n)}>+ {n}</button>
+    <div className="qsearch" onClick={onClose}>
+      <div className="box" onClick={(e) => e.stopPropagation()}>
+        <input ref={ref} value={q} onChange={(e) => { setQ(e.target.value); setI(0); }} aria-label="Startnummer oder Name" placeholder="Startnummer oder Name …"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); setI((x) => Math.min(x + 1, hits.length - 1)); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setI((x) => Math.max(x - 1, 0)); }
+            if (e.key === 'Enter' && hits[i]) onPick(hits[i].id);
+          }} />
+        <ul>
+          {hits.map((h, k) => (
+            <li key={h.id}><button className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => onPick(h.id)}>
+              <b style={{ color: 'var(--flag)', minWidth: '2.5em', textAlign: 'right' }}>{h.bib}</b><span className="grow">{h.name}</span><span className="muted small">{h.team}</span>
+            </button></li>
           ))}
-        </div>
+          {!hits.length && <li className="muted" style={{ padding: 8 }}>Kein Fahrer gefunden.</li>}
+        </ul>
       </div>
-      {groups.length === 0 && <p className="muted">Noch keine Gruppen erfasst.</p>}
-      {groups.map((g, i) => {
-        const ageMin = g.measuredAt ? (Date.now() - new Date(g.measuredAt).getTime()) / 60000 : null;
-        return (
-          <div key={g.id} className="group">
-            <div className="group-head">
-              <strong>{g.name}</strong> <span className="muted">({g.riderIds.length})</span>
-              {i > 0 && (
-                <label className="gap">
-                  Abstand <input defaultValue={g.gapSec != null ? formatDuration(g.gapSec) : ''} key={g.gapSec ?? 'x'} placeholder="m:ss" aria-label={`Abstand ${g.name}`} onBlur={(e) => setGap(g, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
-                </label>
-              )}
-              {g.measuredAt && <span className={`small ${ageMin! > 5 ? 'stale' : 'muted'}`}>{ageMin! > 5 ? 'VERALTET · ' : ''}gemessen {formatClock(g.measuredAt)}</span>}
-              <button className="link" onClick={() => mutate(['groups'], (w) => w.remove('groups', g.id))} aria-label={`Gruppe ${g.name} entfernen`}>✕</button>
-            </div>
-            <div className="members">
-              {g.riderIds.map((id) => (
-                <button key={id} className="chip" onClick={() => toggleMember(g, id)} title="Aus Gruppe entfernen">{bibOf(id)} {riders.get(id)?.lastName}</button>
-              ))}
-              {app.selectedRiderId && !g.riderIds.includes(app.selectedRiderId) && (
-                <button className="chip add" onClick={() => toggleMember(g, app.selectedRiderId!)}>+ {riders.get(app.selectedRiderId)?.lastName}</button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- Ereignisse
-function EventsPanel({ editionId, stageId, riders }: { editionId: string; stageId?: string; riders: Map<string, Rider> }) {
-  const app = useApp();
-  const [open, setOpen] = useState(true);
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const focusOnOpen = useRef(false);
-  useEffect(() => { if (open && focusOnOpen.current) { focusOnOpen.current = false; input.current?.focus(); } }, [open]);
-  const events = (useLiveQuery(() => db.events.where('editionId').equals(editionId).reverse().sortBy('at').then(alive), [editionId]) ?? []).slice(0, 50);
-  const [undoId, setUndoId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e) || e.ctrlKey || e.metaKey) return;
-      if (e.key === 'n' || e.key === 'N') {
-        e.preventDefault();
-        // Fokus sofort setzen, damit unmittelbar folgende Tastenanschläge nicht verloren gehen
-        if (input.current) input.current.focus();
-        else { setOpen(true); focusOnOpen.current = true; }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  const add = async () => {
-    if (!text.trim()) return;
-    const ev = newRecord({
-      editionId, stageId, at: nowIso(), raceClockSec: currentRaceClockSec(), text: text.trim(),
-      riderIds: app.selectedRiderId ? [app.selectedRiderId] : [], source: 'eigene Beobachtung', confirmed: false,
-    } as Omit<RaceEvent, 'id' | 'rev' | 'createdAt' | 'updatedAt'>);
-    try {
-      await mutate(['events'], (w) => w.put('events', ev));
-      setText(''); // erst nach bestätigtem Speichern leeren
-      setError(null);
-      setUndoId(ev.id);
-    } catch (e) {
-      setError('Nicht gespeichert – Text bleibt erhalten: ' + String(e));
-    }
-  };
-
-  return (
-    <div className="panel events">
-      <div className="panel-head">
-        <button className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>{open ? '▾' : '▸'} Ereignisse & Notizen</button>
-      </div>
-      {open && (
-        <>
-          <div className="event-input">
-            <input
-              ref={input}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void add(); if (e.key === 'Escape') input.current?.blur(); }}
-              placeholder={`Ereignis notieren (Enter)${app.selectedRiderId ? ` – verknüpft mit ${riders.get(app.selectedRiderId)?.displayName ?? ''}` : ''}`}
-              aria-label="Ereignis notieren"
-            />
-            <button onClick={add}>Speichern</button>
-            {undoId && <button className="link" onClick={async () => { await mutate(['events'], (w) => w.remove('events', undoId)); setUndoId(null); }}>Rückgängig</button>}
-          </div>
-          {error && <div className="err small" role="alert">{error}</div>}
-          <ul className="event-list">
-            {events.map((e) => (
-              <li key={e.id}>
-                <span className="time">{fmtTime(e.at).split(' ').pop()}</span>
-                {e.raceClockSec != null && <span className="muted"> [{formatDuration(e.raceClockSec)}]</span>}
-                {' '}{e.text}
-                {e.riderIds.length > 0 && <span className="muted"> · {e.riderIds.map((id) => riders.get(id)?.lastName).join(', ')}</span>}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
     </div>
   );
 }

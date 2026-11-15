@@ -1,278 +1,140 @@
 /**
- * Fachliches Datenmodell (Bauplan Abschnitt 11).
- * Alle IDs werden lokal erzeugt (UUID v4) und bleiben beim Sync stabil.
- * `rev` zählt lokale Revisionen eines Datensatzes und dient später als Basisversion
- * für Sync-Operationen und für sichere Import-Rücknahme.
+ * Rad Command Center – Datenmodell.
+ *
+ * Das Center ist die Sammelstelle für alles Eigene: Fahrerprofile, Renn- und Etappenwissen,
+ * Statistiken, Geschichten, Hintergründe, Notizen und Zitate. Startliste und Fahrerinfos
+ * kommen per Kopieren aus ProCyclingStats (kein automatischer Abruf).
+ *
+ * Formatierte Texte (Typ RichText) sind bereinigtes HTML (siehe domain/richtext.ts).
+ * Eine Zeile, die mit „★“ beginnt, steht in LIVE zuoberst.
  */
 
-export type ID = string;
+export type RichText = string;
 
 export interface Versioned {
-  id: ID;
+  id: string;
   rev: number;
   createdAt: string;
   updatedAt: string;
-  /** Löschmarkierung (Tombstone) – Datensätze werden für Sync nicht hart gelöscht. */
   deleted?: boolean;
 }
 
-export interface ExternalId {
-  /** Namensraum, z. B. "pcs", "uci" */
-  ns: string;
-  value: string;
-}
+/** Abschnitte eines Fahrerprofils – in dieser Reihenfolge angezeigt („Aktuell“ zuoberst). */
+export const RIDER_SECTIONS = [
+  { key: 'aktuell', label: 'Aktuell', hint: 'Form, Verletzungen, Ziele, News – das Neueste zuoberst' },
+  { key: 'erfolge', label: 'Erfolge', hint: 'Siege, Titel, wichtigste Resultate' },
+  { key: 'person', label: 'Person', hint: 'Werdegang, Teams, Fahrertyp, Stärken' },
+  { key: 'persoenlich', label: 'Persönliches', hint: 'Familie, Herkunft, Anekdoten, Hobbys' },
+  { key: 'allgemein', label: 'Allgemein', hint: 'Alles Weitere' },
+  { key: 'zitate', label: 'Zitate', hint: 'Mit Quelle und Datum' },
+] as const;
+export type RiderSectionKey = (typeof RIDER_SECTIONS)[number]['key'];
 
 export interface Rider extends Versioned {
   firstName: string;
   lastName: string;
-  displayName: string;
-  aliases: string[];
-  pronunciation?: string;
-  nationality?: string; // ISO-3166 alpha-3 oder Freitext, wie importiert
-  /** "YYYY" oder "YYYY-MM-DD"; unbekannt bleibt leer (nie erfinden). */
-  birthDate?: string;
+  /** Anzeigename, z. B. „Tadej Pogačar“ */
+  name: string;
+  nation?: string;
+  team?: string;
+  birthDate?: string; // JJJJ-MM-TT oder JJJJ
   birthPlace?: string;
+  residence?: string;
   heightCm?: number;
   weightKg?: number;
-  residence?: string;
-  /** Ergebnisse (Top 10, je nach Quelle) aus einer Quelle; wird bei erneutem Abruf vollständig ersetzt */
-  palmares?: PalmaresEntry[];
-  palmaresSource?: string;
-  /** Teamstationen (aus kopierter PCS-Seite; inkl. Vertragsjahre) */
-  teamHistory?: { year: number; team: string; level?: string }[];
-  /** Top-Ergebnisse laut PCS, auf Deutsch */
-  topResults?: string[];
-  careerWins?: number;
-  family?: string[];
   riderType?: string;
-  strengths?: string;
-  bio?: string;
-  /** Bis zu drei priorisierte Fakten für die Kurzansicht */
-  keyFacts: string[];
-  tags: string[];
-  externalIds: ExternalId[];
-  archived?: boolean;
-  /** Nach Zusammenführung: Weiterleitung auf die überlebende ID */
-  mergedInto?: ID;
-  /** Normalisierte Suchschlüssel (ohne Akzente, klein) – Index */
-  searchTokens: string[];
-  lastVerifiedAt?: string;
-  sources?: string;
+  /** Aussprache für den Kommentar */
+  pronunciation?: string;
+  /** PCS-Seitenkennung, z. B. „tadej-pogacar“ (für den PCS-Knopf) */
+  pcsSlug?: string;
+  sections: Partial<Record<RiderSectionKey, RichText>>;
+  /** Wann wurde „Aktuell“ zuletzt geändert (für Hinweis „seit x Tagen nicht aktualisiert“) */
+  aktuellAt?: string;
+  searchKey: string;
 }
 
-export interface PalmaresEntry {
-  year: number;
-  rank: number;
-  race: string;
-  /** z. B. "General classification", "Stages 3, 6" – leer bei Eintagesrennen */
-  detail?: string;
-  nation?: string;
-}
+export const RACE_SECTIONS = [
+  { key: 'aktuell', label: 'Aktuell', hint: 'Ausgangslage, News, Wetter, Ausfälle' },
+  { key: 'favoriten', label: 'Favoriten', hint: 'Anwärter, Formstand, Duelle' },
+  { key: 'strecke', label: 'Strecke', hint: 'Profil, Schlüsselstellen, Besonderheiten' },
+  { key: 'geschichte', label: 'Geschichte', hint: 'Siegerliste, Rekorde, legendäre Austragungen' },
+  { key: 'statistik', label: 'Statistik', hint: 'Zahlen und Serien' },
+  { key: 'zitate', label: 'Zitate', hint: 'Mit Quelle und Datum' },
+] as const;
+export type RaceSectionKey = (typeof RACE_SECTIONS)[number]['key'];
 
-export interface Team extends Versioned {
-  name: string;
-  code?: string;
-  externalIds: ExternalId[];
-}
-
-export interface RaceSeries extends Versioned {
-  name: string;
-}
-
-export type EditionStatus = 'geplant' | 'laeuft' | 'beendet' | 'archiviert';
-export type EditionFormat = 'eintages' | 'etappen';
-
-export interface Edition extends Versioned {
-  seriesId: ID;
+export interface Race extends Versioned {
   name: string;
   year: number;
-  format: EditionFormat;
-  startDate: string; // YYYY-MM-DD
-  timezone: string; // IANA, z. B. Europe/Zurich
-  category?: string;
-  location?: string;
-  status: EditionStatus;
-  /** Startnummern-Eindeutigkeit: pro Rennen oder pro Kategorie */
-  bibScope: 'rennen' | 'kategorie';
-  /** Herkunft der Daten, z. B. "demo" für fiktive Daten */
-  dataOrigin?: 'demo' | 'manuell' | 'pcs' | 'tissot';
-  /** Verknüpfung mit Tissot Timing (Wettbewerbs-Kennung, z. B. "tdf2026") */
-  tissot?: { id: string; code: string; year: number };
-  notes?: string;
+  kind: 'rundfahrt' | 'eintages';
+  startDate?: string;
+  endDate?: string;
+  /** Link auf die PCS-Rennseite, z. B. https://www.procyclingstats.com/race/tour-de-france/2026 */
+  pcsUrl?: string;
+  sections: Partial<Record<RaceSectionKey, RichText>>;
 }
-
-export type StageType = 'strasse' | 'prolog' | 'ezf' | 'mzf' | 'eintages';
 
 export interface Stage extends Versioned {
-  editionId: ID;
-  /** Ausdrückliche Reihenfolge (Prolog = 0, Halbetappen 3a/3b = 3, 3.5 …) */
-  order: number;
-  label: string;
-  date: string;
-  type: StageType;
+  raceId: string;
+  /** 0 = Prolog; Eintagesrennen haben eine einzige „Etappe“ 1 */
+  number: number;
+  date?: string;
   start?: string;
   finish?: string;
   distanceKm?: number;
+  profile?: 'flach' | 'huegelig' | 'bergankunft' | 'berg' | 'ezf' | 'mzf' | 'kopfsteinpflaster' | 'sonstiges';
+  notes?: RichText;
 }
 
-export type StartStatus = 'gemeldet' | 'aktiv' | 'DNS' | 'DNF' | 'DSQ' | 'OTL' | 'HD';
+export const STATUS_LABEL = { aktiv: 'im Rennen', dns: 'nicht gestartet', dnf: 'aufgegeben', otl: 'Zeitlimit', dsq: 'disqualifiziert' } as const;
+export type EntryStatus = keyof typeof STATUS_LABEL;
 
-export const START_STATUS_LABEL: Record<StartStatus, string> = {
-  gemeldet: 'Gemeldet',
-  aktiv: 'Im Rennen',
-  DNS: 'DNS – nicht gestartet',
-  DNF: 'DNF – aufgegeben',
-  DSQ: 'DSQ – disqualifiziert',
-  OTL: 'OTL – außerhalb Karenzzeit',
-  HD: 'HD – außerhalb Karenzzeit (hors délai)',
-};
-
-export interface Participation extends Versioned {
-  editionId: ID;
-  riderId: ID;
-  /** Startnummer immer als Text (führende Nullen bleiben erhalten) */
-  bib: string;
-  category?: string;
-  /** Team bei diesem Rennen – Momentaufnahme, ändert sich nicht mit dem Profil */
-  teamName: string;
-  teamId?: ID;
-  status: StartStatus;
-  statusStageId?: ID;
-  favorite: boolean;
-  /** Renn-spezifische Übersteuerungen (Schnellkorrektur im Rennkontext) */
-  overrides: { pronunciation?: string; displayName?: string };
-  raceNote?: string;
-  /** Originalwerte des letzten Imports (nachvollziehbar) */
-  importOriginal?: Record<string, string>;
-}
-
-export type ClassificationKind = 'etappe' | 'gc' | 'punkte' | 'berg' | 'nachwuchs' | 'team';
-
-export const CLASSIFICATION_LABEL: Record<ClassificationKind, string> = {
-  etappe: 'Etappenergebnis',
-  gc: 'Gesamtwertung',
-  punkte: 'Punktewertung',
-  berg: 'Bergwertung',
-  nachwuchs: 'Nachwuchswertung',
-  team: 'Mannschaftswertung',
-};
-
-export type SourceStatus = 'vorlaeufig' | 'quelle_bestaetigt' | 'unbekannt';
-export type Coverage = 'vollstaendig' | 'teilweise' | 'nicht_veroeffentlicht' | 'nicht_verfuegbar' | 'fehlgeschlagen';
-
-export interface ClassificationRow {
-  rank: number | null;
-  riderId?: ID;
-  teamName?: string; // bei Mannschaftswertung: Team statt Fahrer
-  timeSec?: number | null;
-  gapSec?: number | null;
-  sameTimeAsPrevious?: boolean;
-  points?: number | null;
-  status?: StartStatus;
-  /** Originalwert der Quelle, unverändert */
-  sourceValue?: string;
-  /** Name wie in der Quelle – auch wenn der Fahrer (noch) keinem Profil zugeordnet ist */
-  name?: string;
-  /** Platz im vorherigen Stand laut Quelle */
-  prevRank?: number | null;
-}
-
-/**
- * Ein Wertungsstand: z. B. "Gesamtwertung nach Etappe 4".
- * Etappenergebnis und Wertung nach Etappe sind getrennte Datensätze.
- */
-export interface ClassificationStanding extends Versioned {
-  editionId: ID;
-  kind: ClassificationKind;
-  /** Bei kind=etappe: die Etappe; sonst: Stand NACH dieser Etappe */
-  stageId: ID;
-  isFinal: boolean;
-  source: string; // "PCS", "manuell", "Demo (fiktiv)"
-  fetchedAt: string;
-  sourceRevision: number;
-  sourceStatus: SourceStatus;
-  coverage: Coverage;
-  unit: 'zeit' | 'punkte';
-  rows: ClassificationRow[];
-  /** Inhalts-Prüfsumme: unveränderte Daten erzeugen keine neue Revision */
-  contentHash?: string;
-}
-
-export interface Note extends Versioned {
-  scope: 'rider' | 'participation' | 'edition';
-  refId: ID;
-  editionId?: ID;
-  text: string;
-  /** Geschichte bereits erzählt – gilt im Rennkontext editionId */
-  toldInEditions: ID[];
-  priority: boolean;
-  private: boolean;
-  /** Eigene Sammlungen im Live-Board: Statistiken bzw. Themen (Rennen gesamt oder je Etappe) */
-  kind?: 'statistik' | 'thema';
-  stageId?: ID;
-}
-
-export interface RaceEvent extends Versioned {
-  editionId: ID;
-  stageId?: ID;
-  at: string; // ISO Tageszeit
-  raceClockSec?: number;
-  text: string;
-  riderIds: ID[];
-  source: string;
-  confirmed: boolean;
-}
-
-export interface RaceGroup extends Versioned {
-  editionId: ID;
-  stageId?: ID;
+/** Startlisten-Eintrag: jeder Fahrer im Feld; mit Profil verknüpft, wenn eines existiert. */
+export interface Entry extends Versioned {
+  raceId: string;
+  bib?: string;
   name: string;
-  order: number;
-  riderIds: ID[];
-  /** Abstand zur Bezugsgruppe (Spitze) in Sekunden */
-  gapSec?: number | null;
-  measuredAt?: string;
+  team?: string;
+  riderId?: string;
+  status: EntryStatus;
+  /** Etappe, ab der der Status gilt */
+  statusStage?: number;
+  /** Rennbezogene Notiz zum Fahrer (z. B. Rolle im Team bei diesem Rennen) */
+  note?: RichText;
+}
+
+export const TOPIC_KINDS = [
+  { key: 'statistik', label: 'Statistik' },
+  { key: 'geschichte', label: 'Geschichte' },
+  { key: 'hintergrund', label: 'Hintergrund' },
+  { key: 'notiz', label: 'Notiz' },
+  { key: 'zitat', label: 'Zitat' },
+] as const;
+export type TopicKind = (typeof TOPIC_KINDS)[number]['key'];
+
+/** Eintrag im Themen-Center: Statistik, Geschichte, Hintergrund, Notiz oder Zitat. */
+export interface Topic extends Versioned {
+  kind: TopicKind;
+  title: string;
+  body: RichText;
+  /** Rennen, Etappe und Fahrer, zu denen der Eintrag gehört (alles optional) */
+  raceId?: string;
+  stageNumber?: number;
+  riderIds: string[];
+  /** Quelle / Urheber (bei Zitaten: wer, wann, wo) */
   source?: string;
-}
-
-export interface ImportRun extends Versioned {
-  editionId: ID;
-  sourceName: string;
-  mappingName?: string;
-  summary: { neu: number; zugeordnet: number; geaendert: number; unveraendert: number; zurueckgestellt: number; fehlerhaft: number; nichtEnthalten: number };
-  createdRiderIds: ID[];
-  createdParticipationIds: ID[];
-  /** Vorherige Fassung geänderter Teilnahmen für Rücknahme */
-  updatedParticipations: { id: ID; before: Participation; revAfter: number }[];
-  deferredRows: { row: Record<string, string>; reason: string }[];
-  undone?: boolean;
-}
-
-export interface SavedMapping extends Versioned {
-  name: string;
-  mapping: Record<string, string>; // Zielfeld -> Quellspalte
-}
-
-/** Dauerhafte Versandwarteschlange (Outbox) für späteren Sync. */
-export interface ChangeOp {
-  opId: ID;
-  entity: string;
-  entityId: ID;
-  op: 'put' | 'delete';
-  baseRev: number;
-  rev: number;
-  at: string;
-  deviceId: string;
-  synced: 0 | 1;
+  /** In LIVE hervorheben */
+  starred?: boolean;
 }
 
 export interface RestorePoint {
-  id: ID;
+  id: string;
   createdAt: string;
   reason: string;
-  sizeBytes: number;
-  data: Uint8Array; // ZIP wie Exportarchiv
   protected?: boolean;
+  /** komprimierte Sicherung */
+  data: Uint8Array;
+  sizeBytes: number;
 }
 
 export interface Setting {

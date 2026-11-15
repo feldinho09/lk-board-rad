@@ -3,9 +3,8 @@
  * einer kopierten PCS-Seite nach; Namen und Teams sind frei erfunden.
  */
 import { describe, it, expect } from 'vitest';
-import { parsePcsStartlist, pcsStartlistToMatrix } from './pcsPaste';
-import { tableFromMatrix } from './parse';
-import { guessMapping, matchRows } from './matching';
+import { parsePcsStartlist } from './pcsPaste';
+import { displayName, splitName } from '../domain/center';
 
 const PASTE = [
   '', 'search', 'Home', 'Races▼', 'ME', '2025', '2026', '2027', 'Results▼', 'Startlist▼',
@@ -36,14 +35,17 @@ describe('PCS-Startliste (kopiert)', () => {
     expect(s.warnings[0]).toMatch(/PCS nennt 8 Fahrer, erkannt wurden 7/);
   });
 
-  it('läuft durch den normalen Abgleich: Namen sauber getrennt, Team übernommen', () => {
-    const t = tableFromMatrix(pcsStartlistToMatrix(parsePcsStartlist(PASTE)!));
-    const m = matchRows(t.rows, guessMapping(t.headers), { riders: [], editionParticipations: [], bibScope: 'rennen' });
-    const n = (bib: string) => m.rows.find((r) => r.norm.bib === bib)!.norm;
-    expect(n('3')).toMatchObject({ firstName: 'Seán', lastName: "O'Neill", team: 'Alpenfirn Racing' });
-    expect(n('11')).toMatchObject({ firstName: 'Joris', lastName: 'Van den Broeck' });
+  it('Namen werden sauber in Vor- und Nachname getrennt', () => {
+    const s = parsePcsStartlist(PASTE)!;
+    const n = (bib: string) => splitName(s.entries.find((e) => e.bib === bib)!.name);
+    expect(n('3')).toEqual({ firstName: 'Seán', lastName: "O'Neill" });
+    expect(n('11')).toEqual({ firstName: 'Joris', lastName: 'Van den Broeck' });
     expect(n('12').lastName).toBe('Renard-Dupont');
     expect(n('21').lastName).toBe('De la Rosa');
+    expect(n('1')).toEqual({ firstName: 'Jonas', lastName: 'Brändli' });
+    expect(displayName('ØVREBØ Lars')).toBe('Lars Øvrebø');
+    expect(displayName('Tadej Pogačar')).toBe('Tadej Pogačar');
+    expect(splitName('Mathieu van der Poel')).toEqual({ firstName: 'Mathieu', lastName: 'van der Poel' });
   });
 
   it('normale Tabellen werden nicht fälschlich als PCS erkannt', () => {

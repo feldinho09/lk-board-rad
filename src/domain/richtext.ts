@@ -1,5 +1,6 @@
 /**
- * Formatierter Text (fett, kursiv, unterstrichen, Markierung, Aufzählung, Einzug).
+ * Formatierter Text wie im MotoGP Command Center: fett, kursiv, fünf Leuchtstifte mit
+ * fester Bedeutung, Aufzählung, Einzug und Stern (★ am Zeilenanfang = in LIVE zuoberst).
  *
  * Gespeichert wird bereinigtes HTML mit einer festen Erlaubnisliste. Alles andere –
  * Skripte, Links, Bilder, fremde Stile, Ereignis-Attribute – wird entfernt. Das gilt beim
@@ -8,12 +9,48 @@
  * Bisheriger reiner Text bleibt gültig und wird unverändert als Text angezeigt.
  */
 
+/** Leuchtstifte – gleiche Farben wie im MotoGP Command Center, Bedeutungen für den Radsport */
 export const HIGHLIGHTS = [
-  { name: 'Gelb', hex: '#fff1a8' },
-  { name: 'Grün', hex: '#c6f2c6' },
-  { name: 'Rot', hex: '#ffc9c9' },
-  { name: 'Blau', hex: '#cde3ff' },
+  { key: 'gelb', name: 'Gelb', hex: '#ffe066', meaning: 'Titel / Leadertrikot' },
+  { key: 'gruen', name: 'Grün', hex: '#8ce99a', meaning: 'Rekord / Bestwert' },
+  { key: 'blau', name: 'Blau', hex: '#a5d8ff', meaning: 'Statistik' },
+  { key: 'rot', name: 'Rot', hex: '#ffa8a8', meaning: 'Sturz / Ausfall' },
+  { key: 'orange', name: 'Orange', hex: '#ffc078', meaning: 'Hintergrund' },
 ] as const;
+
+export const STAR = '★';
+
+/** Zeilen (Absätze, Listenpunkte) mit Stern zuerst: für LIVE. Liefert die Stern-Zeilen als HTML und den Rest. */
+export function splitStarred(html: string | undefined | null): { starred: string[]; rest: string } {
+  if (!html) return { starred: [], rest: '' };
+  if (!isRich(html)) {
+    const lines = html.split('\n');
+    const st = lines.filter((l) => l.trim().startsWith(STAR));
+    return { starred: st.map((l) => plainToHtml(l.trim().slice(1).trim())), rest: plainToHtml(lines.filter((l) => !l.trim().startsWith(STAR)).join('\n')) };
+  }
+  const doc = new DOMParser().parseFromString(`<div id="r">${sanitize(html)}</div>`, 'text/html');
+  const root = doc.getElementById('r')!;
+  const starred: string[] = [];
+  // Eigener Text einer Zeile = ohne verschachtelte Listen und Absätze
+  const ownText = (el: Element) => [...el.childNodes].filter((n) => !(n.nodeType === 1 && /^(UL|OL|DIV|P|LI|BLOCKQUOTE)$/.test((n as Element).tagName))).map((n) => n.textContent ?? '').join('');
+  const isStar = (el: Element) => ownText(el).trimStart().startsWith(STAR);
+  // Listenpunkte und Absätze (auch verschachtelt), deren eigener Text mit ★ beginnt
+  const cands = [...root.querySelectorAll('li, div, p')].filter(isStar);
+  for (const el of cands) {
+    const clone = el.cloneNode(true) as Element;
+    // nur den Text der Zeile selbst (ohne Unterpunkte) übernehmen
+    clone.querySelectorAll('ul, ol').forEach((n) => n.remove());
+    const walker = doc.createTreeWalker(clone, 4);
+    const first = walker.nextNode();
+    if (first) first.textContent = (first.textContent ?? '').replace(/^\s*★\s*/, '');
+    starred.push(clone.innerHTML.trim());
+    el.remove();
+  }
+  // leere Listen aufräumen
+  root.querySelectorAll('ul, ol').forEach((l) => { if (!l.querySelector('li')) l.remove(); });
+  const rest = (root.textContent ?? '').trim() ? root.innerHTML : '';
+  return { starred: starred.filter(Boolean), rest };
+}
 
 const KEEP = new Set(['P', 'DIV', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'SPAN']);
 const DROP_WITH_CONTENT = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'TEMPLATE', 'NOSCRIPT', 'SVG', 'MATH', 'HEAD', 'TITLE', 'META', 'LINK', 'SELECT', 'TEXTAREA', 'BUTTON', 'INPUT']);

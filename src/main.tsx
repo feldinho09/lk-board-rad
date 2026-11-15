@@ -8,8 +8,8 @@ registerServiceWorker();
 
 // Testanbindung für automatisierte Abnahmetests (nur mit ?testhooks in der Adresse)
 if (location.search.includes('testhooks')) {
-  void Promise.all([import('./db/db'), import('./domain/search')]).then(([dbm, s]) => {
-    (window as unknown as Record<string, unknown>).__lk = { db: dbm.db, mutate: dbm.mutate, newRecord: dbm.newRecord, search: s.search };
+  void Promise.all([import('./db/db'), import('./domain/center')]).then(([dbm, c]) => {
+    (window as unknown as Record<string, unknown>).__lk = { db: dbm.db, center: c };
   });
 }
 createRoot(document.getElementById('root')!).render(
