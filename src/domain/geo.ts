@@ -225,3 +225,26 @@ export function climbStats(points: RoutePoint[]): { up: number; max: number | nu
   }
   return { up: Math.round(up), max, min };
 }
+
+/** Höhe an km (nächster Streckenpunkt). */
+export function eleAt(points: RoutePoint[], km: number): number | null {
+  let best = points[0];
+  for (const p of points) if (Math.abs(p[3] - km) < Math.abs(best[3] - km)) best = p;
+  return best?.[2] ?? null;
+}
+
+/** Mittlere Steigung eines Anstiegs aus der Strecke: Gipfel bei kmTop, Länge lengthKm. */
+export function climbGradient(points: RoutePoint[], kmTop: number, lengthKm: number): number | undefined {
+  if (!points.length || !(lengthKm > 0)) return undefined;
+  const top = eleAt(points, kmTop), foot = eleAt(points, Math.max(0, kmTop - lengthKm));
+  if (top == null || foot == null) return undefined;
+  return Math.round(((top - foot) / (lengthKm * 1000)) * 1000) / 10;
+}
+
+/** „8.2 km à 6.1 % · Kat. 1“ */
+export function climbText(p: { climbLengthKm?: number; climbGradient?: number; climbCategory?: string }): string {
+  const f = (x: number) => x.toLocaleString('de-CH', { maximumFractionDigits: 1 });
+  const a = [p.climbLengthKm ? `${f(p.climbLengthKm)} km` : '', p.climbGradient != null ? `${f(p.climbGradient)} %` : ''].filter(Boolean).join(' à ');
+  const c = p.climbCategory ? (p.climbCategory === 'HC' ? 'HC' : `Kat. ${p.climbCategory}`) : '';
+  return [a, c].filter(Boolean).join(' · ');
+}

@@ -3,9 +3,12 @@
  * Fahrerprofile, Themen) als PDF. Alles entsteht lokal im Browser, auch offline.
  */
 import { db, alive } from '../db/db';
-import { RACE_SECTIONS, RIDER_SECTIONS, STATUS_LABEL, TOPIC_KINDS, type Entry, type Race, type RaceSectionKey, type Rider, type RiderSectionKey, type Stage, type Topic } from '../domain/types';
+import { GEO_KINDS, RACE_SECTIONS, RIDER_SECTIONS, STANDING_KINDS, STATUS_LABEL, TOPIC_KINDS, type Entry, type GeoPoint, type Route, type RundownRow, type Race, type RaceSectionKey, type Rider, type RiderSectionKey, type Stage, type Topic } from '../domain/types';
 import { ageOn, byBib } from '../domain/center';
 import { richToPdf, type PdfBlock } from './richToPdf';
+import { climbText, kmToGo } from '../domain/geo';
+import { fmtDur } from '../domain/rundown';
+import { latestStandings } from '../domain/standings';
 
 export interface ExportOptions {
   raceSections: RaceSectionKey[];
@@ -18,6 +21,10 @@ export interface ExportOptions {
   riderFacts: boolean;
   riderSections: RiderSectionKey[];
   topics: 'keine' | 'stern' | 'alle';
+  /** Spickzettel pro Etappe: Sendeablauf, Punkte an der Strecke, Klassemente */
+  sheetRundown?: boolean;
+  sheetGeo?: boolean;
+  sheetStandings?: boolean;
   fontScale: 'normal' | 'gross';
 }
 
@@ -30,10 +37,13 @@ export const DEFAULT_EXPORT: ExportOptions = {
   riderFacts: true,
   riderSections: ['aktuell', 'erfolge', 'person', 'persoenlich'],
   topics: 'stern',
+  sheetRundown: false,
+  sheetGeo: false,
+  sheetStandings: false,
   fontScale: 'normal',
 };
 
-export interface ExportData { race: Race; stages: Stage[]; entries: Entry[]; riders: Map<string, Rider>; topics: Topic[] }
+export interface ExportData { race: Race; stages: Stage[]; entries: Entry[]; riders: Map<string, Rider>; topics: Topic[]; rundown?: RundownRow[]; geo?: GeoPoint[]; routes?: Route[] }
 
 export async function collectExportData(raceId: string): Promise<ExportData> {
   const race = await db.races.get(raceId);
@@ -42,7 +52,10 @@ export async function collectExportData(raceId: string): Promise<ExportData> {
   const entries = alive(await db.entries.where('raceId').equals(raceId).toArray()).sort(byBib);
   const riders = new Map(alive(await db.riders.toArray()).map((r) => [r.id, r]));
   const topics = alive(await db.topics.toArray());
-  return { race, stages, entries, riders, topics };
+  const rundown = alive(await db.rundown.where('raceId').equals(raceId).toArray()).sort((a, b) => a.order - b.order);
+  const geo = alive(await db.geo.where('raceId').equals(raceId).toArray()).filter((p) => !p.hidden).sort((a, b) => a.km - b.km);
+  const routes = alive(await db.routes.toArray()).filter((r) => r.raceId === raceId);
+  return { race, stages, entries, riders, topics, rundown, geo, routes };
 }
 
 /** Stern-Zeichen gibt es in der PDF-Schrift nicht → „»“ */
@@ -70,6 +83,40 @@ export function buildExportDoc(d: ExportData, o: ExportOptions, now = new Date()
         const head = [d.race.kind === 'eintages' ? '' : s.number === 0 ? 'Prolog' : `Etappe ${s.number}`, s.date ? new Date(s.date + 'T12:00:00Z').toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'numeric' }) : '', [s.start, s.finish].filter(Boolean).join(' – '), s.distanceKm ? `${s.distanceKm} km` : ''].filter(Boolean).join(' · ');
         content.push({ text: head, style: 'h3' }, ...rich(s.notes));
       }
+    }
+  }
+
+  if (o.sheetRundown || o.sheetGeo || o.sheetStandings) {
+    const list = o.onlyStage != null ? d.stages.filter((s) => s.number === o.onlyStage) : d.stages;
+    const kindLabel = Object.fromEntries(GEO_KINDS.map((k) => [k.key, k.label]));
+    for (const s of list) {
+      const name = d.race.kind === 'eintages' ? 'Rennen' : s.number === 0 ? 'Prolog' : `Etappe ${s.number}`;
+      const block: unknown[] = [];
+      const rows = o.sheetRundown ? (d.rundown ?? []).filter((r) => r.stageNumber === s.number) : [];
+      if (rows.length) {
+        const b = s.broadcast;
+        block.push({ text: ['Sendeablauf', b?.title ? ` · ${b.title}` : '', b?.channel ? ` · ${b.channel}` : '', b?.start ? ` · ${b.start}–${b.end ?? ''}` : ''].join(''), style: 'h3' });
+        block.push({ table: { headerRows: 1, widths: [34, 30, '*', '*', 60], body: [['Zeit', 'Dauer', 'Element', 'Inhalt', 'Wer'].map((t) => ({ text: t, style: 'label' })), ...rows.map((r) => [r.time ?? '', fmtDur(r.durationMin), { text: r.item, bold: true }, r.content ?? '', r.who ?? ''])] }, layout: 'lightHorizontalLines' });
+      }
+      const pts = o.sheetGeo ? (d.geo ?? []).filter((p) => p.stageNumber === s.number) : [];
+      if (pts.length) {
+        const len = d.routes?.find((r) => r.stageNumber === s.number)?.lengthKm ?? s.distanceKm ?? Math.max(...pts.map((p) => p.km));
+        block.push({ text: 'An der Strecke (km to go)', style: 'h3' });
+        block.push({ table: { headerRows: 1, widths: [34, 62, '*'], body: [['km', 'Art', 'Punkt'].map((t) => ({ text: t, style: 'label' })), ...pts.map((p) => [
+          { text: kmToGo(len, p.km).toFixed(1), bold: true, alignment: 'right' },
+          kindLabel[p.kind] ?? p.kind,
+          { stack: [{ text: [{ text: `${p.starred ? '» ' : ''}${p.name}`, bold: true }, p.kind === 'anstieg' && climbText(p) ? { text: `  ${climbText(p)}`, color: '#c0392b' } : ''] }, ...(p.summary ? [{ text: p.summary, style: 'meta' }] : []), ...rich(p.notes)] },
+        ])] }, layout: 'lightHorizontalLines' });
+      }
+      if (o.sheetStandings) {
+        for (const l of latestStandings(d.stages, s.number)) {
+          if (l.kind === 'etappe' && l.stage.number !== s.number) continue;
+          const lab = STANDING_KINDS.find((k) => k.key === l.kind)!.label;
+          block.push({ text: `${lab} nach ${l.stage.number === 0 ? 'Prolog' : d.race.kind === 'eintages' ? 'Rennen' : `Etappe ${l.stage.number}`}`, style: 'h3' });
+          block.push({ table: { widths: [22, 24, '*', 60], body: l.rows.slice(0, 10).map((r) => [`${r.rank}.`, { text: r.bib ?? '', color: '#a07800' }, r.name, { text: r.value ?? '', alignment: 'right' }]) }, layout: 'noBorders' });
+        }
+      }
+      if (block.length) content.push({ text: `Spickzettel ${name}${s.date ? ' · ' + new Date(s.date + 'T12:00:00Z').toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'numeric' }) : ''}`, style: 'h2', pageBreak: content.length > 3 ? 'before' : undefined }, ...block);
     }
   }
 

@@ -1,7 +1,7 @@
 /**
  * Geographisches speichern: Strecke (GPX) und Punkte je Etappe.
  */
-import { db, alive, mutate, newRecord } from '../db/db';
+import { db, alive, mutate, newRecord, getDevice, setDevice } from '../db/db';
 import type { GeoPoint, Route, Stage, Versioned } from './types';
 import { mergeFound, type FoundPlace } from './geo';
 
@@ -65,4 +65,19 @@ export async function updatePoint(id: string, patch: Partial<New<GeoPoint>>) {
 export async function removePoint(p: GeoPoint) {
   if (p.source === 'wikipedia') await updatePoint(p.id, { hidden: true });
   else await mutate(['geo'], (w) => w.remove('geo', p.id));
+}
+
+/** LIVE: km to go um delta verstellen (Taste + / −). */
+let nudgeChain: Promise<unknown> = Promise.resolve();
+export function nudgeKmToGo(raceId: string, stage: Stage, delta: number): Promise<void> {
+  // nacheinander, damit schnelles Tippen keine Schritte verliert
+  const run = nudgeChain.then(() => doNudge(raceId, stage, delta));
+  nudgeChain = run.catch(() => undefined);
+  return run;
+}
+async function doNudge(raceId: string, stage: Stage, delta: number) {
+  const key = `kmToGo:${raceId}:${stage.number}`;
+  const length = (await stageRoute(raceId, stage.number))?.lengthKm ?? stage.distanceKm ?? 999;
+  const cur = (await getDevice<number | undefined>(key, undefined)) ?? length;
+  await setDevice(key, Math.max(0, Math.min(length, Math.round((cur + delta) * 10) / 10)));
 }

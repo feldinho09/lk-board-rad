@@ -218,6 +218,51 @@ try {
   await page.waitForSelector('.geo-live-row');
   check('LIVE Geo', 'LIVE zeigt die nächsten Punkte entlang der Strecke', (await page.locator('.geo-live-row').count()) === 2);
 
+  // 9b2 Tastatur + / − verstellt km to go
+  const ktg0 = Number(await page.locator('#ktg').inputValue());
+  await page.locator('body').click({ position: { x: 5, y: 300 } }).catch(() => {});
+  await page.keyboard.press('-'); await page.keyboard.press('-'); await page.keyboard.press('+'); await page.keyboard.press('-');
+  await page.waitForFunction((v) => Number(document.querySelector('#ktg').value) === v, Math.round((ktg0 - 2) * 10) / 10);
+  check('LIVE Tastatur', 'Tasten + / − verstellen km to go ohne Maus', true, `${ktg0} → ${await page.locator('#ktg').inputValue()}`);
+
+  // 9b3 Rennsituation: Gruppen anlegen, Startnummern tippen, Fahrer anklicken
+  await page.getByRole('button', { name: '+ Feld' }).click();
+  await page.locator('.situation').getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.getByLabel('Startnummern Spitze').fill('21 22');
+  await page.getByLabel('Abstand Verfolger').fill('+1:40');
+  await page.getByLabel('Startnummern Verfolger').fill('11');
+  await page.getByLabel('Startnummern Verfolger').press('Tab');
+  await page.locator('.situation').getByRole('button', { name: 'Fertig' }).click();
+  await page.locator('.sit-rider', { hasText: 'Vingegaard' }).click();
+  await page.waitForSelector('.live-card h1:has-text("Jonas Vingegaard")');
+  const sitChip = await page.locator('.live-ranks').textContent();
+  const sitTxt = await page.locator('.situation').textContent();
+  check('Rennsituation', 'Gruppen mit Abstand und Startnummern; Klick auf Fahrer öffnet Karte mit Gruppe', sitChip.includes('Spitze') && sitTxt.includes('+1:40') && sitTxt.includes('Hirschi'), sitTxt.slice(0, 80));
+
+  // 9b4 Klassement einfügen (Rennen → Klassemente), LIVE zeigt Klassement und Platz auf der Karte
+  const rid = await lk(async () => (await window.__lk.db.stages.toArray()).find((s) => s.situation)?.raceId);
+  await page.goto(URL + `#rennen-${rid}`);
+  await page.getByRole('tab', { name: /Klassemente/ }).click();
+  await page.getByLabel('Rangliste einfügen').fill('Rnk\tBIB\tRider\tTime\n1\t21\tVINGEGAARD Jonas\t3:12:40\n2\t11\tHIRSCHI Marc\t0:12\n3\t22\tKUSS Sepp\t,,');
+  await page.getByRole('button', { name: /^Gesamt nach .* übernehmen$/ }).click();
+  await page.waitForSelector('text=3 Plätze');
+  await page.goto(URL + '#live');
+  await page.waitForSelector('.standings-live');
+  const stTxt = await page.locator('.standings-live').textContent();
+  const rk = await page.locator('.live-ranks').textContent();
+  await page.locator('.standings-live tr', { hasText: 'Hirschi' }).click();
+  await page.waitForSelector('.live-card h1:has-text("Marc Hirschi")');
+  const rk2 = await page.locator('.live-ranks').textContent();
+  check('Klassemente', 'Rangliste einfügen; LIVE zeigt Klassement, Platz auf der Karte, Klick öffnet Fahrer', stTxt.includes('Vingegaard') && rk.includes('Gesamt 1.') && rk2.includes('Gesamt 2.') && rk2.includes('0:12'), `${rk} | ${rk2}`);
+
+  // 9b5 Schriftgrösse und Stichworte
+  await page.getByRole('button', { name: 'Schrift grösser' }).click();
+  await page.waitForFunction(() => document.querySelector('.live-board').style.zoom === '1.1');
+  await page.screenshot({ path: `${screens}/09b5-live-situation.png`, fullPage: false });
+  await page.getByRole('button', { name: 'Schrift kleiner' }).click();
+  await page.waitForFunction(() => !document.querySelector('.live-board').style.zoom);
+  check('LIVE Schrift', 'Schrift grösser/kleiner für LIVE (gemerkt)', true);
+
   // 9c Hell-Ansicht
   await page.getByRole('button', { name: /Hell/ }).click();
   const theme = await page.evaluate(() => [document.documentElement.dataset.theme, getComputedStyle(document.body).backgroundColor]);

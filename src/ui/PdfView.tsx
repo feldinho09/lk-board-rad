@@ -55,6 +55,20 @@ export function PdfView() {
           <label className="check"><input type="checkbox" checked={o.startlist} onChange={(e) => set({ startlist: e.target.checked })} /> Startliste</label>
         </div>
 
+        <h3 style={{ marginTop: 14 }}>Spickzettel {o.onlyStage != null ? `(${stageLabel({ number: o.onlyStage })})` : 'pro Etappe'}</h3>
+        <div className="row">
+          <label className="check"><input type="checkbox" checked={!!o.sheetRundown} onChange={(e) => set({ sheetRundown: e.target.checked })} /> SRF-Sendeablauf</label>
+          <label className="check"><input type="checkbox" checked={!!o.sheetGeo} onChange={(e) => set({ sheetGeo: e.target.checked })} /> Punkte an der Strecke (km to go)</label>
+          <label className="check"><input type="checkbox" checked={!!o.sheetStandings} onChange={(e) => set({ sheetStandings: e.target.checked })} /> Klassemente (Top 10)</label>
+        </div>
+        {race.kind === 'rundfahrt' && !o.stages && (
+          <div className="row" style={{ marginTop: 6 }}>
+            <select value={o.onlyStage ?? ''} onChange={(e) => set({ onlyStage: e.target.value === '' ? undefined : Number(e.target.value) })} aria-label="Etappe für Spickzettel">
+              <option value="">alle Etappen</option>{cur.stages.map((s) => <option key={s.id} value={s.number}>nur {stageLabel(s)}</option>)}
+            </select>
+          </div>
+        )}
+
         <h3 style={{ marginTop: 14 }}>Fahrer</h3>
         <div className="row">
           <label className="check"><input type="radio" checked={o.riders === 'keine'} onChange={() => set({ riders: 'keine' })} /> keine</label>

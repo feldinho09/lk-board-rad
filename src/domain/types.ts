@@ -88,6 +88,37 @@ export interface Stage extends Versioned {
   geoNotes?: RichText;
   /** SRF-Programm: Sendungstitel, Sender, Sendezeit */
   broadcast?: { title?: string; channel?: string; start?: string; end?: string; notes?: string };
+  /** LIVE: Rennsituation (Spitze, Verfolger, Feld …) */
+  situation?: { groups: SituationGroup[]; at?: string };
+  /** Klassemente NACH dieser Etappe (eingefügt) */
+  standings?: Partial<Record<StandingKind, StandingRow[]>>;
+}
+
+export interface SituationGroup {
+  id: string;
+  label: string;
+  /** Abstand, frei: „+2:35“, „1'40“ */
+  gap?: string;
+  /** Startnummern */
+  bibs: string[];
+  note?: string;
+}
+
+export const STANDING_KINDS = [
+  { key: 'etappe', label: 'Etappe', short: 'Etappe' },
+  { key: 'gc', label: 'Gesamt', short: 'Gesamt' },
+  { key: 'punkte', label: 'Punkte', short: 'Punkte' },
+  { key: 'berg', label: 'Berg', short: 'Berg' },
+  { key: 'nachwuchs', label: 'Nachwuchs', short: 'Nachw.' },
+] as const;
+export type StandingKind = (typeof STANDING_KINDS)[number]['key'];
+export interface StandingRow {
+  rank: number;
+  name: string;
+  bib?: string;
+  team?: string;
+  /** Rückstand, Zeit oder Punkte, wie eingefügt */
+  value?: string;
 }
 
 export const STATUS_LABEL = { aktiv: 'im Rennen', dns: 'nicht gestartet', dnf: 'aufgegeben', otl: 'Zeitlimit', dsq: 'disqualifiziert' } as const;
@@ -172,6 +203,10 @@ export interface GeoPoint extends Versioned {
   summary?: string;
   notes?: RichText;
   starred?: boolean;
+  /** Anstieg: Länge (km), mittlere Steigung (%), Kategorie; km = Passhöhe/Gipfel */
+  climbLengthKm?: number;
+  climbGradient?: number;
+  climbCategory?: 'HC' | '1' | '2' | '3' | '4';
   /** ausgeblendet (bleibt erhalten, damit ein neuer Abruf ihn nicht wieder einfügt) */
   hidden?: boolean;
   source: 'wikipedia' | 'eigen';

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { setDevice, db } from '../db/db';
 import { GEO_KINDS, type GeoKind, type GeoPoint, type Race, type Route, type Stage } from '../domain/types';
-import { climbStats, fetchSummary, findAlongRoute, kmToGo, parseGpx } from '../domain/geo';
+import { climbGradient, climbStats, climbText, fetchSummary, findAlongRoute, kmToGo, parseGpx } from '../domain/geo';
 import { addFound, addPoint, removePoint, removeRoute, saveRoute, stagePoints, stageRoute, updatePoint } from '../domain/geoStore';
 import { updateStage } from '../domain/center';
 import { normalize } from '../domain/text';
@@ -69,7 +69,7 @@ function Geo({ race, stage }: { race: Race; stage: Stage }) {
         </div>
         <AddPoint race={race} stage={stage} length={length} />
         <div className="geo-list">
-          {shown.map((p) => <PointRow key={p.id} p={p} length={length} open={open === p.id} onToggle={() => setOpen(open === p.id ? null : p.id)} />)}
+          {shown.map((p) => <PointRow key={p.id} p={p} route={route} length={length} open={open === p.id} onToggle={() => setOpen(open === p.id ? null : p.id)} />)}
           {!shown.length && <p className="muted">{points.length ? 'Keine Treffer.' : 'Noch keine Punkte. Lade oben die Strecke (GPX) und hole Orte und Sehenswürdigkeiten von Wikipedia – oder erfasse eigene Punkte mit km.'}</p>}
         </div>
       </div>
@@ -150,6 +150,11 @@ export function Profile({ route, points, currentToGo, height = 170 }: { route: R
     <svg viewBox={`0 0 ${W} ${H}`} className="profile" role="img" aria-label="Höhenprofil der Etappe mit Punkten nach km to go" preserveAspectRatio="none">
       <path d={`${line}L${W},${H - padB}L0,${H - padB}Z`} className="profile-area" />
       <path d={line} className="profile-line" />
+      {hasEle && points.filter((p) => p.kind === 'anstieg' && p.climbLengthKm).map((p) => {
+        const seg = route.points.filter((q) => q[2] != null && q[3] >= p.km - p.climbLengthKm! && q[3] <= p.km);
+        if (seg.length < 2) return null;
+        return <path key={`c-${p.id}`} className={`profile-climb cat-${p.climbCategory ?? 'x'}`} d={seg.map((q, i) => `${i ? 'L' : 'M'}${x(q[3]).toFixed(1)},${y(q[2]!).toFixed(1)}`).join('')} />;
+      })}
       {ticks.map((t) => (
         <g key={t}>
           <line x1={x(route.lengthKm - t)} x2={x(route.lengthKm - t)} y1={H - padB} y2={H - padB + 4} className="profile-axis" />
@@ -159,7 +164,7 @@ export function Profile({ route, points, currentToGo, height = 170 }: { route: R
       {hasEle && <text x={4} y={12} className="profile-label">{hi} m</text>}
       {points.map((p) => (
         <circle key={p.id} cx={x(p.km)} cy={hasEle ? y(eleAt(p.km)) : H - padB} r={p.starred ? 6 : p.kind === 'ort' ? 2.5 : 4} fill={p.starred ? 'var(--flag)' : KIND_COLOR[p.kind]} stroke="var(--asphalt)" strokeWidth={1}>
-          <title>{`${fmtKm(kmToGo(route.lengthKm, p.km))} km to go – ${p.name}`}</title>
+          <title>{`${fmtKm(kmToGo(route.lengthKm, p.km))} km to go – ${p.name}${p.kind === 'anstieg' && climbText(p) ? ` (${climbText(p)})` : ''}`}</title>
         </circle>
       ))}
       {currentToGo != null && <line x1={x(route.lengthKm - currentToGo)} x2={x(route.lengthKm - currentToGo)} y1={0} y2={H - padB} className="profile-now" />}
@@ -167,7 +172,7 @@ export function Profile({ route, points, currentToGo, height = 170 }: { route: R
   );
 }
 
-function PointRow({ p, length, open, onToggle }: { p: GeoPoint; length: number; open: boolean; onToggle: () => void }) {
+function PointRow({ p, route, length, open, onToggle }: { p: GeoPoint; route?: Route; length: number; open: boolean; onToggle: () => void }) {
   const [busy, setBusy] = useState(false);
   const wikiUrl = p.wikiTitle ? `https://${p.wikiLang ?? 'de'}.wikipedia.org/wiki/${encodeURIComponent(p.wikiTitle.replace(/ /g, '_'))}` : undefined;
   return (
@@ -178,6 +183,7 @@ function PointRow({ p, length, open, onToggle }: { p: GeoPoint; length: number; 
           <span className={`chip kindchip k-${p.kind}`}>{KIND_SHORT[p.kind]}</span>
           <b className="geo-name">{p.name}</b>
           {p.description && <span className="muted small">{p.description}</span>}
+          {p.kind === 'anstieg' && climbText(p) && <span className="climb">{climbText(p)}</span>}
           {p.offsetM != null && p.offsetM >= 400 && <span className="small muted">· {offsetText(p.offsetM)}</span>}
         </div>
         {p.summary && <div className="geo-sum">{p.summary}</div>}
@@ -187,6 +193,14 @@ function PointRow({ p, length, open, onToggle }: { p: GeoPoint; length: number; 
               <label className="field">Name<CommitInput value={p.name} onCommit={(v) => v.trim() && updatePoint(p.id, { name: v.trim() })} /></label>
               <label className="field">km to go<CommitInput type="number" value={kmToGo(length, p.km)} onCommit={(v) => v !== '' && updatePoint(p.id, { km: Math.round((length - Number(v)) * 10) / 10 })} /></label>
               <label className="field">Art<select value={p.kind} onChange={(e) => updatePoint(p.id, { kind: e.target.value as GeoKind })}>{GEO_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}</select></label>
+              {p.kind === 'anstieg' && (
+                <>
+                  <label className="field">Länge (km)<CommitInput type="number" value={p.climbLengthKm} onCommit={(v) => { const l = v === '' ? undefined : Number(v); const g = l && route && p.climbGradient == null ? climbGradient(route.points, p.km, l) : undefined; void updatePoint(p.id, { climbLengthKm: l, ...(g != null ? { climbGradient: g } : {}) }); }} /></label>
+                  <label className="field">Steigung (%)<CommitInput type="number" value={p.climbGradient} onCommit={(v) => updatePoint(p.id, { climbGradient: v === '' ? undefined : Number(v) })} /></label>
+                  <label className="field">Kategorie<select value={p.climbCategory ?? ''} onChange={(e) => updatePoint(p.id, { climbCategory: (e.target.value || undefined) as GeoPoint['climbCategory'] })}><option value="">–</option>{(['HC', '1', '2', '3', '4'] as const).map((c) => <option key={c} value={c}>{c === 'HC' ? 'HC' : `Kat. ${c}`}</option>)}</select></label>
+                  {route && p.climbLengthKm ? <button className="btn small" style={{ alignSelf: 'end' }} title="Mittlere Steigung aus dem Höhenprofil (Gipfel = km to go des Punkts)" onClick={() => updatePoint(p.id, { climbGradient: climbGradient(route.points, p.km, p.climbLengthKm!) })}>Steigung aus Strecke</button> : null}
+                </>
+              )}
             </div>
             <div style={{ marginTop: 6 }}><RichField label={`Notizen ${p.name}`} value={p.notes} onSave={(h) => updatePoint(p.id, { notes: h })} placeholder="Eigene Notizen, Anekdoten, Bezug zu Fahrern …" minLines={2} /></div>
           </div>
@@ -266,6 +280,7 @@ export function GeoLive({ race, stage }: { race: Race; stage: Stage }) {
               <b>{p.name}</b>
               <span className="muted small">{d <= 0.05 ? 'jetzt' : `in ${fmtKm(d)} km`}</span>
             </div>
+            {p.kind === 'anstieg' && climbText(p) && <div className="climb">{p.climbLengthKm && d > 0.05 && d < p.climbLengthKm ? `am Anstieg · noch ${fmtKm(Math.max(0, d))} km zur Passhöhe · ` : ''}{climbText(p)}</div>}
             {(i < 2 || p.starred) && p.summary && <div className="small">{p.summary}</div>}
             {(i < 2 || p.starred) && p.notes && <RichView value={p.notes} className="small" />}
           </div>

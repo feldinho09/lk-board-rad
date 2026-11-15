@@ -246,3 +246,45 @@ button.kindchip.on { border-color: var(--flag); background: var(--star-bg); }
 .geo-live-row { padding: 6px 0; border-top: 1px solid var(--line); }
 .geo-live-row.starred { background: var(--star-bg); padding-left: 6px; border-left: 3px solid var(--flag); }
 .geo-live-km { font-family: var(--display); font-size: 1.25rem; color: var(--accent); min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Rennsituation (LIVE) */
+.live-center { display: flex; flex-direction: column; gap: 10px; }
+.situation { background: var(--tarmac); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; gap: 10px; align-items: flex-start; }
+.situation.empty { align-items: center; padding: 6px 10px; }
+.sit-groups { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
+.sit-group { flex: 1 1 160px; min-width: 150px; background: var(--raised); border-radius: 6px; padding: 6px 8px; }
+.sit-group:first-child { box-shadow: inset 3px 0 var(--kerb); }
+.sit-head { display: flex; gap: 6px; align-items: baseline; margin-bottom: 4px; }
+.sit-head b { font-family: var(--display); text-transform: uppercase; letter-spacing: .05em; }
+.sit-gap { font-family: var(--display); font-size: 1.15rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+.sit-riders { display: flex; flex-wrap: wrap; gap: 4px; }
+.sit-rider { border: 1px solid var(--line); background: var(--tarmac); color: var(--paint); border-radius: 4px; padding: 1px 6px; cursor: pointer; font-size: .95rem; }
+.sit-rider .bib { font-family: var(--display); color: var(--accent); }
+.sit-rider.profile { border-color: var(--flag); }
+.sit-rider.on { background: var(--star-bg); }
+.sit-add { border: 1px dashed var(--line); background: none; color: var(--dim); border-radius: 4px; padding: 1px 6px; cursor: pointer; font-size: .85rem; }
+.sit-tools { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.live-ranks { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.live-ranks .chip { font-size: .9rem; padding: 2px 10px; }
+.live-more { margin-top: 4px; }
+.live-more summary { cursor: pointer; color: var(--dim); font-size: .9rem; }
+.live-more summary:hover { color: var(--paint); }
+
+/* Klassemente */
+.tbl.standing { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.tbl.standing td { padding: 3px 6px; border-top: 1px solid var(--line); }
+.tbl.standing .rk { width: 2.6em; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+.tbl.standing .bibc { width: 2.6em; text-align: right; font-family: var(--display); color: var(--accent); }
+.tbl.standing .val { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl.standing tr.pick { cursor: pointer; }
+.tbl.standing tr.pick:hover td { background: var(--raised); }
+.standings-live .chip { cursor: pointer; }
+
+/* Anstiege */
+.climb { color: var(--k-rot); font-size: .9rem; font-weight: 600; }
+.profile-climb { fill: none; stroke: var(--kerb); stroke-width: 4; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .85; }
+.profile-climb.cat-HC, .profile-climb.cat-1 { stroke-width: 5; }
+.profile-climb.cat-3, .profile-climb.cat-4 { opacity: .6; }
+
+.live-board .startlist .row .btn { display: inline-flex; width: auto; align-items: center; background: var(--raised); border: 1px solid var(--line); padding: 0 10px; }
+.live-board .startlist .row .btn:hover { background: var(--line); }
