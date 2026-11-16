@@ -6,7 +6,7 @@ import { ageOn, raceEntries, topicsFor } from '../domain/center';
 import { normalize } from '../domain/text';
 import { LiveText, RichView } from './rich';
 import { PROFILE_LABEL, fmtDate, stageLabel, useCurrent } from './state';
-import { PcsLink } from './pcs';
+import { openPcs, PcsLink } from './pcs';
 import { pcsRiderUrl } from '../domain/center';
 import { OnAir } from './ProgramView';
 import { GeoLive } from './GeoView';
@@ -30,6 +30,8 @@ export function LiveView() {
   const [qs, setQs] = useState<string | null>(null);
   const compact = useLiveQuery(() => getDevice('liveCompact', true), []) ?? true;
   const zoom = useLiveQuery(() => getDevice('liveZoom', 1), []) ?? 1;
+  const pcsOnBib = useLiveQuery(() => getDevice('livePcsOnBib', true), []) ?? true;
+  const [pcsBlocked, setPcsBlocked] = useState(false);
 
   useEffect(() => { void getDevice<string | null>(`liveSel:${race?.id}`, null).then(setSel); }, [race?.id]);
   const choose = (id: string) => { setSel(id); if (race) void setDevice(`liveSel:${race.id}`, id); };
@@ -65,6 +67,7 @@ export function LiveView() {
           <span className="small muted" style={{ minWidth: '3em', textAlign: 'center' }}>{Math.round(zoom * 100)} %</span>
           <button className="btn small" onClick={() => setZoom(zoom + 0.1)} aria-label="Schrift grösser" title="Schrift grösser">A+</button>
           <span className="grow" />
+          <label className="check small" title="Bei der Suche nach Startnummer die Fahrerseite auf PCS im Fenster „pcs“ öffnen"><input type="checkbox" checked={pcsOnBib} onChange={(e) => void setDevice('livePcsOnBib', e.target.checked)} /> PCS</label>
           <label className="check small" title="Nur ★-Zeilen und Aktuell offen, Rest eingeklappt"><input type="checkbox" checked={compact} onChange={(e) => void setDevice('liveCompact', e.target.checked)} /> Stichworte</label>
         </div>
         {!entries.length && <p className="muted small" style={{ padding: 6 }}>Keine Startliste. In <a href={`#rennen-${race.id}`}>Rennen</a> einfügen.</p>}
@@ -94,7 +97,15 @@ export function LiveView() {
         <StagePanel race={race} stage={cur.stage} topics={topics} />
       </aside>
 
-      {qs !== null && <QuickSearch initial={qs} entries={entries} onPick={(id) => { choose(id); setQs(null); }} onClose={() => setQs(null)} />}
+      {qs !== null && <QuickSearch initial={qs} entries={entries} onClose={() => setQs(null)} onPick={(id, byBib) => {
+        choose(id); setQs(null);
+        const e = entries.find((x) => x.id === id);
+        if (byBib && pcsOnBib && e) {
+          const r = e.riderId ? riders.get(e.riderId) : undefined;
+          setPcsBlocked(!openPcs(pcsRiderUrl(r ?? { name: e.name, pcsSlug: undefined }), false));
+        }
+      }} />}
+      {pcsBlocked && <div className="banner warn" role="alert" style={{ position: 'fixed', bottom: 12, left: 12, right: 12, zIndex: 50 }}>Das PCS-Fenster wurde vom Browser blockiert. Bitte für diese Seite Pop-ups erlauben (Symbol rechts in der Adressleiste). <button className="btn small" onClick={() => setPcsBlocked(false)}>OK</button></div>}
     </div>
   );
 }
@@ -211,7 +222,7 @@ function StagePanel({ race, stage, topics }: { race: Race; stage?: Stage; topics
   );
 }
 
-function QuickSearch({ initial, entries, onPick, onClose }: { initial: string; entries: Entry[]; onPick: (id: string) => void; onClose: () => void }) {
+function QuickSearch({ initial, entries, onPick, onClose }: { initial: string; entries: Entry[]; onPick: (id: string, byBib: boolean) => void; onClose: () => void }) {
   const [q, setQ] = useState(initial);
   const [i, setI] = useState(0);
   const ref = useRef<HTMLInputElement>(null);
@@ -231,11 +242,11 @@ function QuickSearch({ initial, entries, onPick, onClose }: { initial: string; e
             if (e.key === 'Escape') { e.preventDefault(); onClose(); }
             if (e.key === 'ArrowDown') { e.preventDefault(); setI((x) => Math.min(x + 1, hits.length - 1)); }
             if (e.key === 'ArrowUp') { e.preventDefault(); setI((x) => Math.max(x - 1, 0)); }
-            if (e.key === 'Enter' && hits[i]) onPick(hits[i].id);
+            if (e.key === 'Enter' && hits[i]) onPick(hits[i].id, /^\d+$/.test(q.trim()));
           }} />
         <ul>
           {hits.map((h, k) => (
-            <li key={h.id}><button className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => onPick(h.id)}>
+            <li key={h.id}><button className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => onPick(h.id, /^\d+$/.test(q.trim()))}>
               <b style={{ color: 'var(--accent)', minWidth: '2.5em', textAlign: 'right' }}>{h.bib}</b><span className="grow">{h.name}</span><span className="muted small">{h.team}</span>
             </button></li>
           ))}

@@ -134,9 +134,18 @@ try {
   // 6 LIVE: Startnummer tippen, ★ zuoberst, Etappe und Thema rechts
   await page.goto(URL + '#live');
   await page.waitForSelector('nav.startlist');
+  // PCS wird im Test nie aufgerufen: Anfragen ans PCS-Fenster werden lokal beantwortet
+  await ctx.route('https://www.procyclingstats.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<title>PCS (Test)</title>' }));
+  const popup = ctx.waitForEvent('page', { timeout: 10000 });
   await page.keyboard.type('11');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.live-card h1:has-text("Marc Hirschi")');
+  const pcsPage = await popup;
+  const pcsUrl = pcsPage.url();
+  const pcsName = await pcsPage.evaluate(() => window.name);
+  check('LIVE → PCS', 'Startnummer suchen öffnet die PCS-Fahrerseite im Fenster „pcs“', /procyclingstats\.com\/(rider\/|search\.php\?term=Marc)/.test(pcsUrl) && pcsName === 'pcs', pcsUrl);
+  let extraPopup = false;
+  ctx.once('page', () => { extraPopup = true; });
   const firstStar = await page.locator('.live-card ul.starred li').first().textContent();
   const side = await page.locator('.live-side').textContent();
   await page.screenshot({ path: `${screens}/live.png` });
@@ -144,7 +153,9 @@ try {
   await page.keyboard.type('vin');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.live-card h1:has-text("Jonas Vingegaard")');
-  check('LIVE-Suche', 'Buchstaben tippen sucht nach Namen (auch ohne Profil)', await page.locator('.live-card').textContent().then((t) => t.includes('Kein Profil')));
+  await page.waitForTimeout(500);
+  check('LIVE-Suche', 'Buchstaben tippen sucht nach Namen (auch ohne Profil), ohne PCS zu öffnen', !extraPopup && await page.locator('.live-card').textContent().then((t) => t.includes('Kein Profil')));
+  await pcsPage.close();
 
   // 7 Neues Rennen, Profil-Fahrer übernehmen
   await page.goto(URL + '#rennen');

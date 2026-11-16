@@ -4,9 +4,10 @@
  * Pro-Funktionen). Rechtsklick → „Link in Split View öffnen“ legt sie in Chrome direkt neben
  * das Center. Kein automatischer Abruf, kein Einbetten (PCS-Nutzungsbedingungen).
  */
-export function openPcs(url: string) {
+export function openPcs(url: string, focus = true) {
   const w = window.open(url, 'pcs');
-  if (w) { try { w.opener = null; } catch { /* egal */ } w.focus(); }
+  if (w) { try { w.opener = null; } catch { /* egal */ } if (focus) w.focus(); }
+  return !!w;
 }
 
 export function PcsLink({ url, children = 'PCS', className = 'btn small pcs', title }: { url: string; children?: React.ReactNode; className?: string; title?: string }) {

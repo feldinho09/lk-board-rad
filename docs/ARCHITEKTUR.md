@@ -36,6 +36,7 @@ Vorbild für Gestaltung und Bedienung ist das MotoGP Command Center des Nutzers.
   - Mitte die Fahrerkarte (★-Zeilen zuoberst, danach Aktuell, Themen, Erfolge …),
   - rechts Etappe, Rennabschnitte und Themen.
   - Tastatur: Eine Ziffer sucht die Startnummer, ein Buchstabe oder `/` sucht den Namen, `+` / `−` verstellen km to go.
+  - Suche nach Startnummer öffnet zusätzlich die PCS-Fahrerseite im Fenster „pcs“ (mit PCS-Adresse im Profil direkt die Fahrerseite, sonst die PCS-Suche nach dem Namen). Schalter „PCS“ links, pro Gerät gemerkt. Nur ein Link, kein Abruf.
   - Rennsituation über der Fahrerkarte: Gruppen (Spitze, Verfolger, Feld …) mit Abstand und Startnummern; Klick auf einen Fahrer öffnet die Karte, „+ Nr.“ verschiebt den gewählten Fahrer in eine Gruppe.
   - Fahrerkarte zeigt die Gruppe des Fahrers.
   - „Stichworte“ (Standard): nur ★-Zeilen, „Aktuell“ und „Bei diesem Rennen“ offen, der Rest eingeklappt; Themen ohne ★ eingeklappt.
