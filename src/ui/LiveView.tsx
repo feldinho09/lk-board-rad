@@ -11,10 +11,7 @@ import { pcsRiderUrl } from '../domain/center';
 import { OnAir } from './ProgramView';
 import { GeoLive } from './GeoView';
 import { Situation, groupOf } from './Situation';
-import { StandingsLive, KIND_LABEL } from './StandingsView';
 import { nudgeKmToGo } from '../domain/geoStore';
-import { latestStandings, riderRanks } from '../domain/standings';
-import { raceStages } from '../domain/center';
 import { splitStarred, sanitize } from '../domain/richtext';
 
 /**
@@ -33,7 +30,6 @@ export function LiveView() {
   const [qs, setQs] = useState<string | null>(null);
   const compact = useLiveQuery(() => getDevice('liveCompact', true), []) ?? true;
   const zoom = useLiveQuery(() => getDevice('liveZoom', 1), []) ?? 1;
-  const stages = useLiveQuery(() => (race ? raceStages(race.id) : Promise.resolve([])), [race?.id]) ?? [];
 
   useEffect(() => { void getDevice<string | null>(`liveSel:${race?.id}`, null).then(setSel); }, [race?.id]);
   const choose = (id: string) => { setSel(id); if (race) void setDevice(`liveSel:${race.id}`, id); };
@@ -55,7 +51,6 @@ export function LiveView() {
 
   const entry = entries.find((e) => e.id === sel);
   const groups = groupByTeam(entries.filter((e) => !onlyProfiles || e.riderId));
-  const latest = cur.stage ? latestStandings(stages, cur.stage.number) : [];
   const setZoom = (z: number) => void setDevice('liveZoom', Math.max(0.8, Math.min(1.6, Math.round(z * 10) / 10)));
 
   return (
@@ -89,14 +84,13 @@ export function LiveView() {
 
       <section aria-label="Fahrer" className="live-center">
         {cur.stage && <Situation stage={cur.stage} entries={entries} selected={entry} onPick={(e) => choose(e.id)} />}
-        {entry ? <RiderCard entry={entry} rider={entry.riderId ? riders.get(entry.riderId) : undefined} race={race} stage={cur.stage} topics={topics} compact={compact} ranks={riderRanks(latest, entry)} />
+        {entry ? <RiderCard entry={entry} rider={entry.riderId ? riders.get(entry.riderId) : undefined} race={race} stage={cur.stage} topics={topics} compact={compact} />
           : <div className="live-card empty-state">Fahrer wählen: links anklicken, Startnummer tippen oder Namen schreiben.</div>}
       </section>
 
       <aside className="live-side" aria-label="Etappe und Rennen">
         {cur.stage && <OnAir race={race} stage={cur.stage} />}
         {cur.stage && <GeoLive race={race} stage={cur.stage} />}
-        {cur.stage && <StandingsLive race={race} stage={cur.stage} entries={entries} onPick={(e) => choose(e.id)} />}
         <StagePanel race={race} stage={cur.stage} topics={topics} />
       </aside>
 
@@ -111,15 +105,12 @@ function groupByTeam(entries: Entry[]): [string, Entry[]][] {
   return [...m];
 }
 
-type Ranks = ReturnType<typeof riderRanks>;
-
-function RankLine({ ranks, entry, stage }: { ranks: Ranks; entry: Entry; stage?: Stage }) {
+function GroupLine({ entry, stage }: { entry: Entry; stage?: Stage }) {
   const g = groupOf(stage, entry.bib);
-  if (!ranks.length && !g) return null;
+  if (!g) return null;
   return (
     <p className="live-ranks">
       {g && <span className="chip kerb">{g.label}{g.gap ? ` ${g.gap}` : ''}</span>}
-      {ranks.map((r) => <span key={r.kind} className={`chip ${r.rank === 1 ? 'flag' : ''}`}>{KIND_LABEL[r.kind]} <b>{r.rank}.</b>{r.value && r.rank > 1 ? ` ${r.value}` : ''}</span>)}
     </p>
   );
 }
@@ -142,14 +133,14 @@ function Sec({ title, value, compact, open, extra }: { title: string; value?: st
   );
 }
 
-function RiderCard({ entry, rider, race, stage, topics, compact, ranks }: { entry: Entry; rider?: Rider; race: Race; stage?: Stage; topics: Topic[]; compact: boolean; ranks: Ranks }) {
+function RiderCard({ entry, rider, race, stage, topics, compact }: { entry: Entry; rider?: Rider; race: Race; stage?: Stage; topics: Topic[]; compact: boolean }) {
   const day = stage?.date ?? race.startDate ?? new Date().toISOString().slice(0, 10);
   if (!rider) {
     return (
       <div className="live-card">
         <div className="live-name"><span className="bibbig">{entry.bib}</span><h1>{entry.name}</h1></div>
         <p className="live-facts">{entry.team}</p>
-        <RankLine ranks={ranks} entry={entry} stage={stage} />
+        <GroupLine entry={entry} stage={stage} />
         {entry.status !== 'aktiv' && <p className="err">{STATUS_LABEL[entry.status]}{entry.statusStage ? ` (Etappe ${entry.statusStage})` : ''}</p>}
         <p className="muted">Kein Profil. In <a href={`#rennen-${race.id}`}>Rennen → Startliste</a> mit „+ Profil“ anlegen.</p>
       </div>
@@ -175,7 +166,7 @@ function RiderCard({ entry, rider, race, stage, topics, compact, ranks }: { entr
       </div>
       <p className="live-facts">{facts.map((f, i) => <span key={i}>{i > 0 && ' · '}{f}</span>)}</p>
       {rider.pronunciation && <p className="live-facts">Aussprache: <b>{rider.pronunciation}</b></p>}
-      <RankLine ranks={ranks} entry={entry} stage={stage} />
+      <GroupLine entry={entry} stage={stage} />
       {entry.status !== 'aktiv' && <p className="err" style={{ fontSize: '1.1rem' }}>{STATUS_LABEL[entry.status]}{entry.statusStage ? ` (Etappe ${entry.statusStage})` : ''}</p>}
       {entry.note && <Sec title="Bei diesem Rennen" value={entry.note} compact={compact} open />}
       <div className="live-sec"><h3>Aktuell{rider.aktuellAt ? <span className="muted small" style={{ textTransform: 'none', letterSpacing: 0 }}> · Stand {fmtDate(rider.aktuellAt)}</span> : null}</h3><LiveText value={rider.sections.aktuell} emptyText="Noch nichts Aktuelles erfasst." /></div>

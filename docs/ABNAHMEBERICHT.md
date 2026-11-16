@@ -20,8 +20,7 @@ Stand: 15. November 2026. Geprüft mit Chromium (Playwright, headless) gegen den
 | Start ohne Internet mit allen Daten | ✅ | Browser |
 | SRF-Programm: Tabelle einfügen (mit/ohne Kopfzeile), Zeiten aus Dauern, laufende Zeile, Ablauf übernehmen, verschieben | ✅ | Unit + Browser |
 | Geographisches: GPX, Höhenprofil, Wikipedia-Orte nach km to go (Abruf im Browsertest simuliert), Ausblenden bleibt, Sicherung enthält Strecke und Punkte | ✅ | Unit + Browser |
-| Rennsituation in LIVE: Gruppen, Abstand, Startnummern, Klick öffnet Fahrer, Gruppe auf der Karte | ✅ | Unit + Browser |
-| Klassemente einfügen (Rang, Fahrer über Startliste, „,,“), neuester Stand in LIVE, Platz auf der Karte | ✅ | Unit + Browser |
+| Rennsituation in LIVE: Gruppen, Abstand, Startnummern, Klick öffnet Fahrer, Gruppe auf der Karte, schnelle Eingaben gehen nicht verloren | ✅ | Unit + Browser |
 | Tasten + / − verstellen km to go (auch schnell hintereinander) | ✅ | Unit + Browser |
 | Anstiege mit Länge, Steigung aus Höhenprofil, Kategorie | ✅ | Unit |
 | LIVE: Stichworte (Rest eingeklappt), Schriftgrösse A− / A+ | ✅ | Browser |
@@ -30,7 +29,6 @@ Stand: 15. November 2026. Geprüft mit Chromium (Playwright, headless) gegen den
 | Keine Programmfehler im Browser während des ganzen Ablaufs | ✅ | Browser |
 
 Offen bzw. nicht geprüft:
-- Ranglisten-Erkennung mit PCS-artigem Aufbau geprüft; echte PCS-Kopien der Klassemente bitte beim ersten Rennen kontrollieren.
 - Wikipedia-Abruf im Browsertest simuliert; echter Abruf manuell an einer Strecke Lausanne–Aigle geprüft.
 - Darstellung in Firefox und Safari (Hauptbrowser ist Chrome/Edge).
 - Echte, vollständige PCS-Kopien sind nur lokal geprüft; im Repository liegen erfundene Beispiele im PCS-Aufbau.

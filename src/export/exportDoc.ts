@@ -3,12 +3,11 @@
  * Fahrerprofile, Themen) als PDF. Alles entsteht lokal im Browser, auch offline.
  */
 import { db, alive } from '../db/db';
-import { GEO_KINDS, RACE_SECTIONS, RIDER_SECTIONS, STANDING_KINDS, STATUS_LABEL, TOPIC_KINDS, type Entry, type GeoPoint, type Route, type RundownRow, type Race, type RaceSectionKey, type Rider, type RiderSectionKey, type Stage, type Topic } from '../domain/types';
+import { GEO_KINDS, RACE_SECTIONS, RIDER_SECTIONS, STATUS_LABEL, TOPIC_KINDS, type Entry, type GeoPoint, type Route, type RundownRow, type Race, type RaceSectionKey, type Rider, type RiderSectionKey, type Stage, type Topic } from '../domain/types';
 import { ageOn, byBib } from '../domain/center';
 import { richToPdf, type PdfBlock } from './richToPdf';
 import { climbText, kmToGo } from '../domain/geo';
 import { fmtDur } from '../domain/rundown';
-import { latestStandings } from '../domain/standings';
 
 export interface ExportOptions {
   raceSections: RaceSectionKey[];
@@ -21,10 +20,9 @@ export interface ExportOptions {
   riderFacts: boolean;
   riderSections: RiderSectionKey[];
   topics: 'keine' | 'stern' | 'alle';
-  /** Spickzettel pro Etappe: Sendeablauf, Punkte an der Strecke, Klassemente */
+  /** Spickzettel pro Etappe: Sendeablauf, Punkte an der Strecke */
   sheetRundown?: boolean;
   sheetGeo?: boolean;
-  sheetStandings?: boolean;
   fontScale: 'normal' | 'gross';
 }
 
@@ -39,7 +37,6 @@ export const DEFAULT_EXPORT: ExportOptions = {
   topics: 'stern',
   sheetRundown: false,
   sheetGeo: false,
-  sheetStandings: false,
   fontScale: 'normal',
 };
 
@@ -86,7 +83,7 @@ export function buildExportDoc(d: ExportData, o: ExportOptions, now = new Date()
     }
   }
 
-  if (o.sheetRundown || o.sheetGeo || o.sheetStandings) {
+  if (o.sheetRundown || o.sheetGeo) {
     const list = o.onlyStage != null ? d.stages.filter((s) => s.number === o.onlyStage) : d.stages;
     const kindLabel = Object.fromEntries(GEO_KINDS.map((k) => [k.key, k.label]));
     for (const s of list) {
@@ -107,14 +104,6 @@ export function buildExportDoc(d: ExportData, o: ExportOptions, now = new Date()
           kindLabel[p.kind] ?? p.kind,
           { stack: [{ text: [{ text: `${p.starred ? '» ' : ''}${p.name}`, bold: true }, p.kind === 'anstieg' && climbText(p) ? { text: `  ${climbText(p)}`, color: '#c0392b' } : ''] }, ...(p.summary ? [{ text: p.summary, style: 'meta' }] : []), ...rich(p.notes)] },
         ])] }, layout: 'lightHorizontalLines' });
-      }
-      if (o.sheetStandings) {
-        for (const l of latestStandings(d.stages, s.number)) {
-          if (l.kind === 'etappe' && l.stage.number !== s.number) continue;
-          const lab = STANDING_KINDS.find((k) => k.key === l.kind)!.label;
-          block.push({ text: `${lab} nach ${l.stage.number === 0 ? 'Prolog' : d.race.kind === 'eintages' ? 'Rennen' : `Etappe ${l.stage.number}`}`, style: 'h3' });
-          block.push({ table: { widths: [22, 24, '*', 60], body: l.rows.slice(0, 10).map((r) => [`${r.rank}.`, { text: r.bib ?? '', color: '#a07800' }, r.name, { text: r.value ?? '', alignment: 'right' }]) }, layout: 'noBorders' });
-        }
       }
       if (block.length) content.push({ text: `Spickzettel ${name}${s.date ? ' · ' + new Date(s.date + 'T12:00:00Z').toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'numeric' }) : ''}`, style: 'h2', pageBreak: content.length > 3 ? 'before' : undefined }, ...block);
     }

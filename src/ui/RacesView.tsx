@@ -10,7 +10,6 @@ import { parsePcsStartlist } from '../import/pcsPaste';
 import { createRestorePoint } from '../backup/archive';
 import { normalize } from '../domain/text';
 import { RichField } from './rich';
-import { StandingsEditor } from './StandingsView';
 import { PcsLink } from './pcs';
 import { CommitInput } from './inputs';
 import { confirmDialog } from './dialogs';
@@ -78,7 +77,7 @@ function NewRace({ onDone }: { onDone: (id?: string) => void }) {
 function RaceEditor({ id }: { id: string }) {
   const race = useLiveQuery(() => db.races.get(id), [id]);
   const cur = useCurrent();
-  const [tab, setTab] = useState<'uebersicht' | 'etappen' | 'startliste' | 'klassemente'>('uebersicht');
+  const [tab, setTab] = useState<'uebersicht' | 'etappen' | 'startliste'>('uebersicht');
   const counts = useLiveQuery(async () => {
     const es = alive(await db.entries.where('raceId').equals(id).toArray());
     return { entries: es.length, profiles: es.filter((e) => e.riderId).length };
@@ -105,12 +104,10 @@ function RaceEditor({ id }: { id: string }) {
           <button role="tab" className={tab === 'uebersicht' ? 'on' : ''} onClick={() => setTab('uebersicht')}>Übersicht</button>
           <button role="tab" className={tab === 'etappen' ? 'on' : ''} onClick={() => setTab('etappen')}>{race.kind === 'eintages' ? 'Strecke' : 'Etappen'}</button>
           <button role="tab" className={tab === 'startliste' ? 'on' : ''} onClick={() => setTab('startliste')}>Startliste {counts ? <span className="muted small">{counts.entries} · {counts.profiles} Profile</span> : null}</button>
-          <button role="tab" className={tab === 'klassemente' ? 'on' : ''} onClick={() => setTab('klassemente')}>{race.kind === 'eintages' ? 'Resultat' : 'Klassemente'}</button>
         </div>
         {tab === 'uebersicht' && <RaceSections race={race} />}
         {tab === 'etappen' && <Stages race={race} />}
         {tab === 'startliste' && <Startlist race={race} />}
-        {tab === 'klassemente' && <StandingsEditor race={race} />}
       </div>
       {tab === 'uebersicht' && <RaceTopics race={race} />}
     </>

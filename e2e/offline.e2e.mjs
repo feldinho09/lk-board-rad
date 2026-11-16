@@ -239,22 +239,6 @@ try {
   const sitTxt = await page.locator('.situation').textContent();
   check('Rennsituation', 'Gruppen mit Abstand und Startnummern; Klick auf Fahrer öffnet Karte mit Gruppe', sitChip.includes('Spitze') && sitTxt.includes('+1:40') && sitTxt.includes('Hirschi'), sitTxt.slice(0, 80));
 
-  // 9b4 Klassement einfügen (Rennen → Klassemente), LIVE zeigt Klassement und Platz auf der Karte
-  const rid = await lk(async () => (await window.__lk.db.stages.toArray()).find((s) => s.situation)?.raceId);
-  await page.goto(URL + `#rennen-${rid}`);
-  await page.getByRole('tab', { name: /Klassemente/ }).click();
-  await page.getByLabel('Rangliste einfügen').fill('Rnk\tBIB\tRider\tTime\n1\t21\tVINGEGAARD Jonas\t3:12:40\n2\t11\tHIRSCHI Marc\t0:12\n3\t22\tKUSS Sepp\t,,');
-  await page.getByRole('button', { name: /^Gesamt nach .* übernehmen$/ }).click();
-  await page.waitForSelector('text=3 Plätze');
-  await page.goto(URL + '#live');
-  await page.waitForSelector('.standings-live');
-  const stTxt = await page.locator('.standings-live').textContent();
-  const rk = await page.locator('.live-ranks').textContent();
-  await page.locator('.standings-live tr', { hasText: 'Hirschi' }).click();
-  await page.waitForSelector('.live-card h1:has-text("Marc Hirschi")');
-  const rk2 = await page.locator('.live-ranks').textContent();
-  check('Klassemente', 'Rangliste einfügen; LIVE zeigt Klassement, Platz auf der Karte, Klick öffnet Fahrer', stTxt.includes('Vingegaard') && rk.includes('Gesamt 1.') && rk2.includes('Gesamt 2.') && rk2.includes('0:12'), `${rk} | ${rk2}`);
-
   // 9b5 Schriftgrösse und Stichworte
   await page.getByRole('button', { name: 'Schrift grösser' }).click();
   await page.waitForFunction(() => document.querySelector('.live-board').style.zoom === '1.1');

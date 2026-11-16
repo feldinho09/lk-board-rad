@@ -270,16 +270,6 @@ button.kindchip.on { border-color: var(--flag); background: var(--star-bg); }
 .live-more summary { cursor: pointer; color: var(--dim); font-size: .9rem; }
 .live-more summary:hover { color: var(--paint); }
 
-/* Klassemente */
-.tbl.standing { width: 100%; border-collapse: collapse; margin-top: 4px; }
-.tbl.standing td { padding: 3px 6px; border-top: 1px solid var(--line); }
-.tbl.standing .rk { width: 2.6em; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
-.tbl.standing .bibc { width: 2.6em; text-align: right; font-family: var(--display); color: var(--accent); }
-.tbl.standing .val { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tbl.standing tr.pick { cursor: pointer; }
-.tbl.standing tr.pick:hover td { background: var(--raised); }
-.standings-live .chip { cursor: pointer; }
-
 /* Anstiege */
 .climb { color: var(--k-rot); font-size: .9rem; font-weight: 600; }
 .profile-climb { fill: none; stroke: var(--kerb); stroke-width: 4; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .85; }

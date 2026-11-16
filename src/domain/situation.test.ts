@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useDatabase, db, getDevice } from '../db/db';
 import { applyStartlist, createRace, raceEntries, raceStages } from './center';
-import { latestStandings, moveBib, newGroup, parseBibs, parseStanding, riderRanks, saveSituation, saveStanding } from './standings';
+import { moveBib, newGroup, parseBibs, saveSituation } from './situation';
 import { climbGradient, climbText } from './geo';
 import { nudgeKmToGo, addPoint } from './geoStore';
 import { pasteRows } from './rundown';
@@ -21,43 +21,6 @@ async function setup() {
   ]);
   return { race, entries: await raceEntries(race.id), stages: await raceStages(race.id) };
 }
-
-describe('Klassemente', () => {
-  it('PCS-artige Rangliste: Rang, Fahrer über Startliste, Rückstand, „,,“', async () => {
-    const { entries } = await setup();
-    const text = [
-      'Rnk\tBIB\tRider\tTeam\tTime',
-      '1\t21\tVINGEGAARD Jonas\tVisma\t12:34:56',
-      '2\t1\tAYUSO Juan\tLidl - Trek\t0:42',
-      '3\t22\tKUSS Sepp\tVisma\t,,',
-      '4\t\tUNBEKANNT Max\tX Team\t1:05',
-    ].join('\n');
-    const rows = parseStanding(text, entries);
-    expect(rows.map((r) => [r.rank, r.bib, r.name, r.value])).toEqual([
-      [1, '21', 'Jonas Vingegaard', '12:34:56'],
-      [2, '1', 'Juan Ayuso', '0:42'],
-      [3, '22', 'Sepp Kuss', '0:42'],
-      [4, undefined, 'UNBEKANNT Max X Team', '1:05'],
-    ]);
-    // Punkte-Wertung: letzte Zahl
-    expect(parseStanding('1 HIRSCHI Marc Tudor 45\n2. Juan Ayuso 30', entries).map((r) => [r.name, r.value])).toEqual([['Marc Hirschi', '45'], ['Juan Ayuso', '30']]);
-  });
-
-  it('neuester Stand pro Wertung und Plätze eines Fahrers', async () => {
-    const { entries, stages } = await setup();
-    await saveStanding(stages[0], 'gc', parseStanding('1 Marc Hirschi 4:00:00\n2 Jonas Vingegaard 0:05', entries));
-    await saveStanding(stages[1], 'gc', parseStanding('1 Jonas Vingegaard 8:00:00\n2 Marc Hirschi 0:10', entries));
-    await saveStanding(stages[0], 'berg', parseStanding('1 Sepp Kuss 12', entries));
-    const all = await raceStages(stages[0].raceId);
-    const l2 = latestStandings(all, 2);
-    expect(l2.map((l) => [l.kind, l.stage.number])).toEqual([['gc', 2], ['berg', 1]]);
-    expect(latestStandings(all, 1).find((l) => l.kind === 'gc')!.rows[0].name).toBe('Marc Hirschi');
-    const hirschi = entries.find((e) => e.bib === '11')!;
-    expect(riderRanks(l2, hirschi)).toEqual([{ kind: 'gc', rank: 2, value: '0:10', stageNumber: 2 }]);
-    await saveStanding(all[1], 'gc', []);
-    expect(latestStandings(await raceStages(stages[0].raceId), 2).find((l) => l.kind === 'gc')!.stage.number).toBe(1);
-  });
-});
 
 describe('Rennsituation', () => {
   it('Startnummern lesen und zwischen Gruppen verschieben', async () => {
@@ -89,16 +52,15 @@ describe('Anstiege und km to go', () => {
     expect(await getDevice(`kmToGo:${race.id}:${st.number}`, 0)).toBe(150);
   });
 
-  it('PDF-Spickzettel mit Ablauf, Punkten und Klassement', async () => {
-    const { race, stages, entries } = await setup();
+  it('PDF-Spickzettel mit Ablauf und Punkten', async () => {
+    const { race } = await setup();
     await pasteRows(race.id, 1, "14:00\t5\tOpener\n14:05\t60\tLive", false);
     await addPoint(race.id, 1, { kind: 'anstieg', name: 'Col du Pillon', km: 120, climbLengthKm: 7, climbGradient: 6.2, climbCategory: '2' });
-    await saveStanding(stages[0], 'gc', parseStanding('1 Marc Hirschi 4:00:00', entries));
     const st = (await raceStages(race.id))[0];
     await db.stages.put({ ...st, distanceKm: 150 });
-    const doc = buildExportDoc(await collectExportData(race.id), { ...DEFAULT_EXPORT, sheetRundown: true, sheetGeo: true, sheetStandings: true, onlyStage: 1 });
+    const doc = buildExportDoc(await collectExportData(race.id), { ...DEFAULT_EXPORT, sheetRundown: true, sheetGeo: true, onlyStage: 1 });
     const json = JSON.stringify(doc.content);
-    for (const s of ['Spickzettel Etappe 1', 'Opener', "60'", 'Col du Pillon', '30.0', '7 km à 6.2 % · Kat. 2', 'Gesamt nach Etappe 1', 'Marc Hirschi']) expect(json).toContain(s);
+    for (const s of ['Spickzettel Etappe 1', 'Opener', "60'", 'Col du Pillon', '30.0', '7 km à 6.2 % · Kat. 2', 'Hirschi']) expect(json).toContain(s);
     expect(json).not.toContain('Spickzettel Etappe 2');
   });
 });

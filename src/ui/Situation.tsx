@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Entry, SituationGroup, Stage } from '../domain/types';
-import { moveBib, newGroup, parseBibs, saveSituation } from '../domain/standings';
+import { moveBib, newGroup, parseBibs, updateSituation } from '../domain/situation';
 import { CommitInput } from './inputs';
 
 const shortName = (n: string) => { const p = n.split(' '); return p.length > 1 ? p.slice(1).join(' ') : n; };
@@ -13,8 +13,8 @@ const PRESETS = ['Spitze', 'Verfolger', 'Feld'];
 export function Situation({ stage, entries, onPick, selected }: { stage: Stage; entries: Entry[]; onPick: (e: Entry) => void; selected?: Entry }) {
   const groups = stage.situation?.groups ?? [];
   const [edit, setEdit] = useState(false);
-  const save = (g: SituationGroup[]) => saveSituation(stage.id, g);
-  const patch = (id: string, p: Partial<SituationGroup>) => save(groups.map((g) => (g.id === id ? { ...g, ...p } : g)));
+  const upd = (fn: (g: SituationGroup[]) => SituationGroup[]) => updateSituation(stage.id, fn);
+  const patch = (id: string, p: Partial<SituationGroup>) => upd((gs) => gs.map((g) => (g.id === id ? { ...g, ...p } : g)));
   const at = stage.situation?.at ? new Date(stage.situation.at).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : null;
   const byBib = new Map(entries.filter((e) => e.bib).map((e) => [e.bib!, e]));
 
@@ -22,7 +22,7 @@ export function Situation({ stage, entries, onPick, selected }: { stage: Stage; 
     return (
       <div className="situation empty">
         <span className="muted small">Rennsituation:</span>
-        {PRESETS.map((l) => <button key={l} className="btn small" onClick={() => save([...PRESETS.slice(0, PRESETS.indexOf(l) + 1).map(newGroup)])}>+ {l}</button>)}
+        {PRESETS.map((l) => <button key={l} className="btn small" onClick={() => upd(() => PRESETS.slice(0, PRESETS.indexOf(l) + 1).map(newGroup))}>+ {l}</button>)}
       </div>
     );
   }
@@ -36,7 +36,7 @@ export function Situation({ stage, entries, onPick, selected }: { stage: Stage; 
                 <>
                   <CommitInput value={g.label} aria-label="Gruppe" style={{ width: 110 }} onCommit={(v) => patch(g.id, { label: v.trim() || g.label })} />
                   <CommitInput value={g.gap} aria-label={`Abstand ${g.label}`} placeholder={i ? '+1:30' : ''} style={{ width: 80 }} onCommit={(v) => patch(g.id, { gap: v.trim() || undefined })} />
-                  <button className="btn small danger" aria-label={`${g.label} entfernen`} onClick={() => save(groups.filter((x) => x.id !== g.id))}>✕</button>
+                  <button className="btn small danger" aria-label={`${g.label} entfernen`} onClick={() => upd((gs) => gs.filter((x) => x.id !== g.id))}>✕</button>
                 </>
               ) : (
                 <>
@@ -56,10 +56,10 @@ export function Situation({ stage, entries, onPick, selected }: { stage: Stage; 
                 );
               })}
               {selected?.bib && !g.bibs.includes(selected.bib) && (
-                <button className="sit-add" title={`${selected.name} in „${g.label}“`} aria-label={`${selected.name} in ${g.label}`} onClick={() => save(moveBib(groups, selected.bib!, g.id))}>+ {selected.bib}</button>
+                <button className="sit-add" title={`${selected.name} in „${g.label}“`} aria-label={`${selected.name} in ${g.label}`} onClick={() => upd((gs) => moveBib(gs, selected.bib!, g.id))}>+ {selected.bib}</button>
               )}
             </div>
-            {edit && <CommitInput value={g.bibs.join(' ')} aria-label={`Startnummern ${g.label}`} placeholder="Startnummern, z. B. 11 21 22" style={{ width: '100%', marginTop: 4 }} onCommit={(v) => { let next = groups; for (const b of parseBibs(v)) next = moveBib(next, b, g.id); save(next.map((x) => (x.id === g.id ? { ...x, bibs: parseBibs(v) } : x))); }} />}
+            {edit && <CommitInput value={g.bibs.join(' ')} aria-label={`Startnummern ${g.label}`} placeholder="Startnummern, z. B. 11 21 22" style={{ width: '100%', marginTop: 4 }} onCommit={(v) => upd((gs) => { let next = gs; for (const b of parseBibs(v)) next = moveBib(next, b, g.id); return next.map((x) => (x.id === g.id ? { ...x, bibs: parseBibs(v) } : x)); })} />}
             {edit ? <CommitInput value={g.note} aria-label={`Notiz ${g.label}`} placeholder="Notiz" style={{ width: '100%', marginTop: 4 }} onCommit={(v) => patch(g.id, { note: v.trim() || undefined })} />
               : g.note && <div className="small muted">{g.note}</div>}
           </div>
@@ -68,7 +68,7 @@ export function Situation({ stage, entries, onPick, selected }: { stage: Stage; 
       <div className="sit-tools">
         {at && <span className="small muted">Stand {at}</span>}
         <button className={`btn small ${edit ? 'primary' : ''}`} onClick={() => setEdit(!edit)}>{edit ? 'Fertig' : 'Bearbeiten'}</button>
-        {edit && <button className="btn small" onClick={() => save([...groups, newGroup(`Gruppe ${groups.length + 1}`)])}>+ Gruppe</button>}
+        {edit && <button className="btn small" onClick={() => upd((gs) => [...gs, newGroup(`Gruppe ${gs.length + 1}`)])}>+ Gruppe</button>}
       </div>
     </div>
   );

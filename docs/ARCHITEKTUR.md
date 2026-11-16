@@ -37,14 +37,13 @@ Vorbild für Gestaltung und Bedienung ist das MotoGP Command Center des Nutzers.
   - rechts Etappe, Rennabschnitte und Themen.
   - Tastatur: Eine Ziffer sucht die Startnummer, ein Buchstabe oder `/` sucht den Namen, `+` / `−` verstellen km to go.
   - Rennsituation über der Fahrerkarte: Gruppen (Spitze, Verfolger, Feld …) mit Abstand und Startnummern; Klick auf einen Fahrer öffnet die Karte, „+ Nr.“ verschiebt den gewählten Fahrer in eine Gruppe.
-  - Fahrerkarte zeigt Gruppe und Plätze in den Klassementen.
+  - Fahrerkarte zeigt die Gruppe des Fahrers.
   - „Stichworte“ (Standard): nur ★-Zeilen, „Aktuell“ und „Bei diesem Rennen“ offen, der Rest eingeklappt; Themen ohne ★ eingeklappt.
   - Schriftgrösse A− / A+ (80–160 %), pro Gerät gemerkt.
-- **Klassemente:** Rennen → Klassemente; Ranglisten (Etappe, Gesamt, Punkte, Berg, Nachwuchs) nach jeder Etappe von PCS kopieren und einfügen (PCS-Knopf öffnet die passende Seite). Fahrer werden über die Startliste erkannt, „,,“ gilt als gleiche Zeit. LIVE zeigt den neuesten Stand bis zur aktuellen Etappe mit Leadern; Klick auf eine Zeile öffnet den Fahrer.
 - **SRF-Programm:** Sendeablauf pro Etappe als Tabelle (Zeit, Dauer, Element, Inhalt, Wer, erledigt). Einfügen aus Excel/Word (Tab-getrennt, Spalten über die Kopfzeile erkannt), Zeiten aus Dauern fortschreiben, Ablauf einer anderen Etappe übernehmen, Summe gegen das Sendefenster. LIVE zeigt „JETZT“ und „DANACH“ mit Countdown.
 - **Geographisches:** GPX-Strecke pro Etappe (alle 100 m, km ab Start), Höhenprofil mit Achse in km to go, eigene Notizen zur Region. Orte, Sehenswürdigkeiten und Natur entlang der Strecke über die Wikipedia-Geosuche (alle 4 km, Radius 5 km), eingeordnet, ausgedünnt (n pro 10 km) und mit Kurzfassung; sortiert nach km to go. Eigene Punkte (Anstieg, Sprint, Verpflegung …) dazu; Anstiege mit Länge, mittlerer Steigung (aus dem Höhenprofil berechenbar) und Kategorie, im Profil rot markiert; LIVE meldet „am Anstieg · noch x km zur Passhöhe“. Ausgeblendete Wikipedia-Punkte bleiben bei erneutem Abruf ausgeblendet. LIVE zeigt die nächsten Punkte zum eingegebenen km-to-go-Stand.
 - **Suche** (Strg K): über Fahrer (auch in den Texten), Rennen und Themen.
-- **PDF:** Spickzettel pro Etappe (Sendeablauf, Punkte an der Strecke nach km to go, Klassemente Top 10), dazu Rennabschnitte, Etappen, Startliste, Profile mit gewählten Abschnitten und Themen, jeweils wählbar.
+- **PDF:** Spickzettel pro Etappe (Sendeablauf, Punkte an der Strecke nach km to go), dazu Rennabschnitte, Etappen, Startliste, Profile mit gewählten Abschnitten und Themen, jeweils wählbar.
 - **Sicherung:**
   - ZIP mit Prüfsummen und offen lesbarer Fahrerliste; wird vor dem Wiederherstellen vollständig geprüft.
   - Wiederherstellungspunkte entstehen automatisch vor Startliste, PCS-Übernahme, Löschen und Wiederherstellen; die letzten 20 bleiben erhalten.

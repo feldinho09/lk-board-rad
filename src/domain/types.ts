@@ -90,8 +90,6 @@ export interface Stage extends Versioned {
   broadcast?: { title?: string; channel?: string; start?: string; end?: string; notes?: string };
   /** LIVE: Rennsituation (Spitze, Verfolger, Feld …) */
   situation?: { groups: SituationGroup[]; at?: string };
-  /** Klassemente NACH dieser Etappe (eingefügt) */
-  standings?: Partial<Record<StandingKind, StandingRow[]>>;
 }
 
 export interface SituationGroup {
@@ -102,23 +100,6 @@ export interface SituationGroup {
   /** Startnummern */
   bibs: string[];
   note?: string;
-}
-
-export const STANDING_KINDS = [
-  { key: 'etappe', label: 'Etappe', short: 'Etappe' },
-  { key: 'gc', label: 'Gesamt', short: 'Gesamt' },
-  { key: 'punkte', label: 'Punkte', short: 'Punkte' },
-  { key: 'berg', label: 'Berg', short: 'Berg' },
-  { key: 'nachwuchs', label: 'Nachwuchs', short: 'Nachw.' },
-] as const;
-export type StandingKind = (typeof STANDING_KINDS)[number]['key'];
-export interface StandingRow {
-  rank: number;
-  name: string;
-  bib?: string;
-  team?: string;
-  /** Rückstand, Zeit oder Punkte, wie eingefügt */
-  value?: string;
 }
 
 export const STATUS_LABEL = { aktiv: 'im Rennen', dns: 'nicht gestartet', dnf: 'aufgegeben', otl: 'Zeitlimit', dsq: 'disqualifiziert' } as const;

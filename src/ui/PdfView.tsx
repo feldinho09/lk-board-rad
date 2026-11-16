@@ -59,7 +59,6 @@ export function PdfView() {
         <div className="row">
           <label className="check"><input type="checkbox" checked={!!o.sheetRundown} onChange={(e) => set({ sheetRundown: e.target.checked })} /> SRF-Sendeablauf</label>
           <label className="check"><input type="checkbox" checked={!!o.sheetGeo} onChange={(e) => set({ sheetGeo: e.target.checked })} /> Punkte an der Strecke (km to go)</label>
-          <label className="check"><input type="checkbox" checked={!!o.sheetStandings} onChange={(e) => set({ sheetStandings: e.target.checked })} /> Klassemente (Top 10)</label>
         </div>
         {race.kind === 'rundfahrt' && !o.stages && (
           <div className="row" style={{ marginTop: 6 }}>
