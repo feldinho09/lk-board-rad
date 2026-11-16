@@ -3,10 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, alive } from '../db/db';
 import { RACE_SECTIONS, STATUS_LABEL, type Entry, type EntryStatus, type Race, type Stage } from '../domain/types';
 import {
-  addRidersToRace, addStage, applyStartlist, createRace, displayName, entryPcsUrl, nameMatchKey, createTopic, deleteRace, pcsRaceUrl, profileFromEntry, profilesByLastRace,
+  addRidersToRace, addStage, applyStartlist, createRace, entryPcsUrl, createTopic, deleteRace, pcsRaceUrl, profileFromEntry, profilesByLastRace,
   raceEntries, raceStages, removeEntry, removeStage, saveRaceSection, setEntryStatus, updateEntry, updateRace, updateStage, type StartlistResult,
 } from '../domain/center';
-import { parsePcsStartlist, pcsRiderLinks } from '../import/pcsPaste';
+import { matchPcsSlugs, parsePcsStartlist, pcsRiderLinks } from '../import/pcsPaste';
 import { createRestorePoint } from '../backup/archive';
 import { normalize } from '../domain/text';
 import { RichField } from './rich';
@@ -242,13 +242,15 @@ function StartlistPaste({ race, onDone }: { race: Race; onDone: () => void }) {
   const [removeMissing, setRemoveMissing] = useState(false);
   const [res, setRes] = useState<StartlistResult | null>(null);
   const parsed = useMemo(() => (text.trim() ? parsePcsStartlist(text) : null), [text]);
-  // PCS-Kennungen aus den mitkopierten Links (Name → Kennung)
-  const slugs = useMemo(() => new Map(pcsRiderLinks(html).map((l) => [nameMatchKey(displayName(l.name)), l.slug])), [html]);
-  const withSlug = parsed ? parsed.entries.filter((e) => slugs.has(nameMatchKey(displayName(e.name)))).length : 0;
+  // PCS-Kennungen aus den mitkopierten Links
+  const links = useMemo(() => pcsRiderLinks(html), [html]);
+  const slugs = useMemo(() => (parsed ? matchPcsSlugs(parsed.entries, links) : []), [parsed, links]);
+  const withSlug = slugs.filter(Boolean).length;
+  const anchors = useMemo(() => (html.match(/<a\s/gi) ?? []).length, [html]);
   const apply = async () => {
     if (!parsed) return;
     await createRestorePoint(`Vor Startliste ${race.name}`);
-    setRes(await applyStartlist(race.id, parsed.entries.map((e) => ({ bib: e.bib, name: e.name, team: e.team, pcsSlug: slugs.get(nameMatchKey(displayName(e.name))) })), { removeMissing }));
+    setRes(await applyStartlist(race.id, parsed.entries.map((e, i) => ({ bib: e.bib, name: e.name, team: e.team, pcsSlug: slugs[i] })), { removeMissing }));
     setText(''); setHtml('');
   };
   return (
@@ -259,7 +261,10 @@ function StartlistPaste({ race, onDone }: { race: Race; onDone: () => void }) {
       {parsed && (
         <p className="small">
           Erkannt: <b>{parsed.entries.length} Fahrer</b> in {parsed.teams.length} Teams{parsed.meta.raceName ? ` – ${parsed.meta.raceName} ${parsed.meta.year ?? ''}` : ''}.
-          {' '}{withSlug ? `${withSlug} mit Link zur PCS-Fahrerseite.` : <span className="warn">Ohne Links zu den PCS-Fahrerseiten – bitte direkt aus der PCS-Seite kopieren und mit Strg V einfügen (nicht als reiner Text).</span>}
+          {' '}{withSlug === parsed.entries.length ? `Alle mit Link zur PCS-Fahrerseite.`
+            : withSlug ? <span className="warn">{withSlug} von {parsed.entries.length} mit Link zur PCS-Fahrerseite.</span>
+            : <span className="warn">Ohne Links zu den PCS-Fahrerseiten – bitte direkt aus der PCS-Seite kopieren und mit Strg V einfügen (nicht als reiner Text).</span>}
+          <span className="muted"> (Zwischenablage: {html ? `${anchors} Links, davon ${links.length} Fahrer-Links` : 'nur Text, kein HTML'})</span>
           {parsed.warnings.map((w, i) => <span key={i} className="warn"> {w}</span>)}
         </p>
       )}

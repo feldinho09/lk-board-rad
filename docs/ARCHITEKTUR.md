@@ -28,7 +28,7 @@ Vorbild für Gestaltung und Bedienung ist das MotoGP Command Center des Nutzers.
 - **Rennen:** Rundfahrt oder Eintagesrennen.
   - Abschnitte: Aktuell, Favoriten, Strecke, Geschichte, Statistik, Zitate.
   - Etappen mit Datum, Start, Ziel, km, Profil und Notizen.
-  - Startliste mit Startnummer, Team, PCS-Kennung, Status und einer Notiz pro Fahrer für dieses Rennen. Beim Einfügen liest das Center aus dem mitkopierten HTML die Links zu den PCS-Fahrerseiten (nur eingefügter Text, kein Abruf) und ergänzt damit auch Profile ohne Kennung.
+  - Startliste mit Startnummer, Team, PCS-Kennung, Status und einer Notiz pro Fahrer für dieses Rennen. Beim Einfügen liest das Center aus dem mitkopierten HTML die Links zu den PCS-Fahrerseiten (nur eingefügter Text, kein Abruf). Zuordnung über Linktext, Startnummer oder die Namensteile in der Kennung; die Vorschau zeigt, wie viele Links erkannt wurden. Profile ohne Kennung werden ergänzt; im Fahrer-File steht der PCS-Link als volle Adresse.
 - **Fahrer von Rennen zu Rennen:** Beim Einfügen einer Startliste werden Profile über den Namen verknüpft (akzent- und reihenfolgeunabhängig). „Profil-Fahrer übernehmen“ fügt Profile hinzu, die zuletzt gefahrenen zuerst.
 - **Themen:** Statistik, Geschichte, Hintergrund, Notiz und Zitat, jeweils mit Titel, Text und Quelle. Ein Thema kann mit einem Rennen, einer Etappe und mehreren Fahrern verknüpft und mit ★ hervorgehoben werden.
 - **LIVE (nur Lesen):**

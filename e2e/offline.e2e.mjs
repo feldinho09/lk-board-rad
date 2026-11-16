@@ -84,7 +84,7 @@ try {
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
   });
   await page.waitForSelector('text=Erkannt: 6 Fahrer');
-  await page.waitForSelector('text=2 mit Link zur PCS-Fahrerseite');
+  await page.waitForSelector('text=2 von 6 mit Link zur PCS-Fahrerseite');
   await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
   await page.waitForSelector('text=Übernommen: 6 neu');
   const names = await page.locator('table.tbl tbody td:nth-child(2)').allTextContents();

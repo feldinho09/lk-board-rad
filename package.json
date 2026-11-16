@@ -1,7 +1,7 @@
 {
   "name": "rad-command-center",
   "private": true,
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "LK Board Rad – Offline-fähiges Kommentatorenwerkzeug für Radrennen (Browser-App)",
   "type": "module",
   "license": "UNLICENSED",

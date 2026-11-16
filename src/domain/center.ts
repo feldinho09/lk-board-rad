@@ -212,8 +212,8 @@ export async function addRidersToRace(raceId: string, riderIds: string[]): Promi
       const byLink = existing.find((e) => e.riderId === r.id);
       if (byLink) continue;
       const byName = existing.find((e) => !e.riderId && nameMatchKey(e.name) === nameMatchKey(r.name));
-      if (byName) await w.put('entries', { ...byName, riderId: r.id });
-      else await w.put('entries', newRecord<New<Entry>>({ raceId, name: r.name, team: r.team, riderId: r.id, status: 'aktiv' }) as Entry);
+      if (byName) await w.put('entries', { ...byName, riderId: r.id, pcsSlug: byName.pcsSlug ?? r.pcsSlug });
+      else await w.put('entries', newRecord<New<Entry>>({ raceId, name: r.name, team: r.team, riderId: r.id, pcsSlug: r.pcsSlug, status: 'aktiv' }) as Entry);
       n++;
     }
   });

@@ -104,8 +104,11 @@ function RiderEditor({ id }: { id: string }) {
               <CommitInput type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={r[f.key] as string | number | undefined} onCommit={(v) => saveField(f.key, v, f.type)} />
             </label>
           ))}
-          <label key={`${r.id}-pcs`} className="field">PCS-Adresse oder -Kennung
-            <CommitInput value={r.pcsSlug} placeholder="tadej-pogacar" onCommit={(v) => { const s = pcsSlugFrom(v) ?? (v.trim() || undefined); if (s !== r.pcsSlug) void updateRider(r.id, { pcsSlug: s }); }} />
+          <label key={`${r.id}-pcs`} className="field" style={{ gridColumn: 'span 2' }}>PCS-Link {r.pcsSlug ? <span className="muted small">(aus Startliste oder von Hand)</span> : <span className="warn small">fehlt – wird beim Einfügen einer PCS-Startliste ergänzt</span>}
+            <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+              <CommitInput value={r.pcsSlug ? pcsRiderUrl(r) : ''} placeholder="https://www.procyclingstats.com/rider/tadej-pogacar" style={{ flex: 1 }} onCommit={(v) => { const s = pcsSlugFrom(v) ?? undefined; if (s !== r.pcsSlug && (s || !v.trim())) void updateRider(r.id, { pcsSlug: s }); }} />
+              {r.pcsSlug && <PcsLink url={pcsRiderUrl(r)}>Öffnen</PcsLink>}
+            </span>
           </label>
         </div>
         <PcsPaste rider={r} />

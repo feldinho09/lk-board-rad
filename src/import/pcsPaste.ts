@@ -11,6 +11,7 @@
  *   team statistics in race             ← Menütext (ignoriert)
  * Kopfbereich: „2026 » 110th Ronde van Vlaanderen ME (1.UWT)“, „175 riders“.
  */
+import { normalize } from '../domain/text';
 
 
 export interface PcsRaceMeta {
@@ -91,14 +92,59 @@ export function parsePcsStartlist(text: string): PcsStartlist | null {
  * auch das HTML in die Zwischenablage, darin stehen die Links „rider/tadej-pogacar“.
  * Nur Text, den der Nutzer selbst eingefügt hat – kein Abruf.
  */
-export function pcsRiderLinks(html: string): { name: string; slug: string }[] {
+export interface PcsRiderLink { name: string; slug: string; bib?: string }
+
+/** Kennung aus einer Adresse: „…/rider/tadej-pogacar“, „rider/tadej-pogacar/statistics“, „rider.php?id=…“ nicht. */
+export function slugFromHref(href: string): string | undefined {
+  let h = href.trim();
+  try { h = decodeURIComponent(h); } catch { /* bleibt */ }
+  const m = h.match(/(?:^|[/.])rider\/([^/?#\s"']+)/i);
+  const s = m?.[1]?.toLowerCase();
+  return s && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(s) && s.includes('-') ? s : undefined;
+}
+
+export function pcsRiderLinks(html: string): PcsRiderLink[] {
   if (!html || typeof DOMParser === 'undefined') return [];
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  const out: { name: string; slug: string }[] = [];
+  const out: PcsRiderLink[] = [];
+  const seen = new Set<string>();
   for (const a of Array.from(doc.querySelectorAll('a[href]'))) {
-    const slug = a.getAttribute('href')!.match(/(?:^|\/)rider\/([a-z0-9-]+)\/?(?:[?#]|$)/i)?.[1]?.toLowerCase();
+    const slug = slugFromHref(a.getAttribute('href') ?? '');
     const name = (a.textContent ?? '').replace(/\s+/g, ' ').trim();
-    if (slug && name && /\p{L}/u.test(name)) out.push({ name, slug });
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    // Startnummer: Text des Listeneintrags bzw. der Tabellenzeile vor dem Link
+    let bib: string | undefined;
+    const box = a.closest('li, tr, div');
+    if (box) {
+      const before = (box.textContent ?? '').split(a.textContent ?? '\u0000')[0].replace(/\s+/g, ' ').trim();
+      bib = before.match(/(?:^|\s)(\d{1,3})$/)?.[1];
+    }
+    out.push({ name, slug, bib });
   }
   return out;
+}
+
+const words = (s: string) => normalize(s).split(' ').filter((w) => w.length > 1);
+
+/**
+ * Kennungen den Fahrern der Startliste zuordnen: zuerst über den Linktext (Name),
+ * dann über die Startnummer, zuletzt über die Kennung selbst („jonas-vingegaard-rasmussen“
+ * enthält alle Namensteile von „Jonas Vingegaard“). Nur eindeutige Treffer.
+ */
+export function matchPcsSlugs(entries: { bib?: string; name: string }[], links: PcsRiderLink[]): (string | undefined)[] {
+  const key = (s: string) => words(s).sort().join(' ');
+  const byName = new Map<string, string | null>();
+  for (const l of links) { const k = key(l.name); if (k) byName.set(k, byName.has(k) && byName.get(k) !== l.slug ? null : l.slug); }
+  const byBib = new Map<string, string | null>();
+  for (const l of links) if (l.bib) byBib.set(l.bib, byBib.has(l.bib) && byBib.get(l.bib) !== l.slug ? null : l.slug);
+  return entries.map((e) => {
+    const n = byName.get(key(e.name));
+    if (n) return n;
+    const b = e.bib ? byBib.get(e.bib) : undefined;
+    if (b && words(e.name).some((w) => b.split('-').includes(w))) return b;
+    const ws = words(e.name);
+    const hits = links.filter((l) => ws.length > 0 && ws.every((w) => l.slug.split('-').includes(w)));
+    return hits.length === 1 ? hits[0].slug : undefined;
+  });
 }
