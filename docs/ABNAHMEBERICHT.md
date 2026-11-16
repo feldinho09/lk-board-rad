@@ -25,7 +25,8 @@ Stand: 15. November 2026. Geprüft mit Chromium (Playwright, headless) gegen den
 | Anstiege mit Länge, Steigung aus Höhenprofil, Kategorie | ✅ | Unit |
 | LIVE: Stichworte (Rest eingeklappt), Schriftgrösse A− / A+ | ✅ | Browser |
 | PDF-Spickzettel pro Etappe | ✅ | Unit |
-| LIVE: Startnummer suchen öffnet PCS-Fahrerseite im Fenster „pcs“, Namenssuche nicht | ✅ | Browser (PCS lokal simuliert) |
+| Startliste: PCS-Kennungen aus den mitkopierten Links, Profil ergänzt, bleibt bei erneutem Einfügen ohne Links | ✅ | Unit + Browser |
+| LIVE: Startnummer suchen öffnet direkt die PCS-Fahrerseite im Fenster „pcs“, Namenssuche nicht | ✅ | Browser (PCS lokal simuliert) |
 | Hell-Ansicht: umschalten, bleibt nach Neuladen | ✅ | Browser |
 | Keine Programmfehler im Browser während des ganzen Ablaufs | ✅ | Browser |
 

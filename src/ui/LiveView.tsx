@@ -7,7 +7,7 @@ import { normalize } from '../domain/text';
 import { LiveText, RichView } from './rich';
 import { PROFILE_LABEL, fmtDate, stageLabel, useCurrent } from './state';
 import { openPcs, PcsLink } from './pcs';
-import { pcsRiderUrl } from '../domain/center';
+import { entryPcsUrl } from '../domain/center';
 import { OnAir } from './ProgramView';
 import { GeoLive } from './GeoView';
 import { Situation, groupOf } from './Situation';
@@ -102,7 +102,7 @@ export function LiveView() {
         const e = entries.find((x) => x.id === id);
         if (byBib && pcsOnBib && e) {
           const r = e.riderId ? riders.get(e.riderId) : undefined;
-          setPcsBlocked(!openPcs(pcsRiderUrl(r ?? { name: e.name, pcsSlug: undefined }), false));
+          setPcsBlocked(!openPcs(entryPcsUrl(e, r), false));
         }
       }} />}
       {pcsBlocked && <div className="banner warn" role="alert" style={{ position: 'fixed', bottom: 12, left: 12, right: 12, zIndex: 50 }}>Das PCS-Fenster wurde vom Browser blockiert. Bitte für diese Seite Pop-ups erlauben (Symbol rechts in der Adressleiste). <button className="btn small" onClick={() => setPcsBlocked(false)}>OK</button></div>}
@@ -149,7 +149,7 @@ function RiderCard({ entry, rider, race, stage, topics, compact }: { entry: Entr
   if (!rider) {
     return (
       <div className="live-card">
-        <div className="live-name"><span className="bibbig">{entry.bib}</span><h1>{entry.name}</h1></div>
+        <div className="live-name"><span className="bibbig">{entry.bib}</span><h1 className="grow">{entry.name}</h1><PcsLink url={entryPcsUrl(entry)} /></div>
         <p className="live-facts">{entry.team}</p>
         <GroupLine entry={entry} stage={stage} />
         {entry.status !== 'aktiv' && <p className="err">{STATUS_LABEL[entry.status]}{entry.statusStage ? ` (Etappe ${entry.statusStage})` : ''}</p>}
@@ -173,7 +173,7 @@ function RiderCard({ entry, rider, race, stage, topics, compact }: { entry: Entr
         <span className="bibbig">{entry.bib}</span><h1>{rider.name}</h1>
         <span className="grow" />
         <a className="btn small" href={`#fahrer-${rider.id}`}>Bearbeiten</a>
-        <PcsLink url={pcsRiderUrl(rider)} />
+        <PcsLink url={entryPcsUrl(entry, rider)} />
       </div>
       <p className="live-facts">{facts.map((f, i) => <span key={i}>{i > 0 && ' · '}{f}</span>)}</p>
       {rider.pronunciation && <p className="live-facts">Aussprache: <b>{rider.pronunciation}</b></p>}

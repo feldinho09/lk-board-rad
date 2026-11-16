@@ -85,3 +85,20 @@ export function parsePcsStartlist(text: string): PcsStartlist | null {
   if (dup.length) warnings.push(`Doppelte Startnummern: ${dup.join(', ')}`);
   return { meta, entries, teams, warnings };
 }
+
+/**
+ * Fahrer-Links aus der kopierten PCS-Seite: Beim Kopieren legt der Browser neben dem Text
+ * auch das HTML in die Zwischenablage, darin stehen die Links „rider/tadej-pogacar“.
+ * Nur Text, den der Nutzer selbst eingefügt hat – kein Abruf.
+ */
+export function pcsRiderLinks(html: string): { name: string; slug: string }[] {
+  if (!html || typeof DOMParser === 'undefined') return [];
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const out: { name: string; slug: string }[] = [];
+  for (const a of Array.from(doc.querySelectorAll('a[href]'))) {
+    const slug = a.getAttribute('href')!.match(/(?:^|\/)rider\/([a-z0-9-]+)\/?(?:[?#]|$)/i)?.[1]?.toLowerCase();
+    const name = (a.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (slug && name && /\p{L}/u.test(name)) out.push({ name, slug });
+  }
+  return out;
+}

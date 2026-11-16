@@ -112,6 +112,8 @@ export interface Entry extends Versioned {
   name: string;
   team?: string;
   riderId?: string;
+  /** PCS-Kennung aus der eingefügten Startliste (für den direkten Link zur Fahrerseite) */
+  pcsSlug?: string;
   status: EntryStatus;
   /** Etappe, ab der der Status gilt */
   statusStage?: number;

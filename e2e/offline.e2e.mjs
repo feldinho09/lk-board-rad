@@ -77,11 +77,19 @@ try {
   await page.getByRole('tab', { name: /Startliste/ }).click();
   await page.getByRole('button', { name: 'Startliste einfügen …' }).click();
   await page.getByLabel('PCS-Startliste einfügen').fill(STARTLIST);
+  // Wie beim echten Einfügen aus dem Browser: neben dem Text liegt das HTML mit den Fahrer-Links in der Zwischenablage
+  await page.getByLabel('PCS-Startliste einfügen').evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.setData('text/html', '<a href="rider/marc-hirschi">HIRSCHI Marc</a><a href="rider/jonas-vingegaard-rasmussen">VINGEGAARD Jonas</a><a href="team/tudor-2027">Tudor</a>');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
   await page.waitForSelector('text=Erkannt: 6 Fahrer');
+  await page.waitForSelector('text=2 mit Link zur PCS-Fahrerseite');
   await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
   await page.waitForSelector('text=Übernommen: 6 neu');
   const names = await page.locator('table.tbl tbody td:nth-child(2)').allTextContents();
-  check('Startliste', 'PCS-Startliste eingefügt: 6 Fahrer, Namen lesbar, nach Startnummer sortiert', names.join('|') === 'Juan Ayuso|Giulio Ciccone|Marc Hirschi|Michael Storer|Jonas Vingegaard|Sepp Kuss', names.join('|'));
+  const slugs = await lk(async () => (await window.__lk.db.entries.toArray()).filter((e) => e.pcsSlug).map((e) => e.pcsSlug).sort().join(','));
+  check('Startliste', 'PCS-Startliste eingefügt: 6 Fahrer, Namen lesbar, nach Startnummer sortiert, PCS-Kennungen aus den Links', names.join('|') === 'Juan Ayuso|Giulio Ciccone|Marc Hirschi|Michael Storer|Jonas Vingegaard|Sepp Kuss' && slugs === 'jonas-vingegaard-rasmussen,marc-hirschi', `${names.join('|')} · ${slugs}`);
 
   // 3 Profil aus Startliste anlegen, Felder und Abschnitte bearbeiten
   await page.locator('tr', { hasText: 'Marc Hirschi' }).getByRole('button', { name: '+ Profil' }).click();
@@ -143,7 +151,7 @@ try {
   const pcsPage = await popup;
   const pcsUrl = pcsPage.url();
   const pcsName = await pcsPage.evaluate(() => window.name);
-  check('LIVE → PCS', 'Startnummer suchen öffnet die PCS-Fahrerseite im Fenster „pcs“', /procyclingstats\.com\/(rider\/|search\.php\?term=Marc)/.test(pcsUrl) && pcsName === 'pcs', pcsUrl);
+  check('LIVE → PCS', 'Startnummer suchen öffnet direkt die PCS-Fahrerseite im Fenster „pcs“', pcsUrl === 'https://www.procyclingstats.com/rider/marc-hirschi' && pcsName === 'pcs', pcsUrl);
   let extraPopup = false;
   ctx.once('page', () => { extraPopup = true; });
   const firstStar = await page.locator('.live-card ul.starred li').first().textContent();

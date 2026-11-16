@@ -146,3 +146,21 @@ describe('Sicherung', () => {
     await expect(verifyArchive(broken)).rejects.toThrow();
   });
 });
+
+describe('PCS-Kennung aus der Startliste', () => {
+  it('speichert die Kennung am Eintrag, ergänzt das Profil und bildet den direkten Link', async () => {
+    const { createRider, applyStartlist, raceEntries, entryPcsUrl, createRace, profileFromEntry } = await import('./center');
+    const r = await createRider({ firstName: 'Jonas', lastName: 'Vingegaard' });
+    const race = await createRace({ name: 'Tour', year: 2027, kind: 'eintages', startDate: '2027-07-01' });
+    await applyStartlist(race.id, [{ bib: '21', name: 'VINGEGAARD Jonas', team: 'Visma', pcsSlug: 'jonas-vingegaard-rasmussen' }, { bib: '1', name: 'POGAČAR Tadej', team: 'UAE', pcsSlug: 'tadej-pogacar' }, { bib: '2', name: 'NARVÁEZ Jhonatan', team: 'UAE' }]);
+    const es = await raceEntries(race.id);
+    expect((await db.riders.get(r.id))!.pcsSlug).toBe('jonas-vingegaard-rasmussen');
+    const tp = es.find((e) => e.bib === '1')!;
+    expect(entryPcsUrl(tp)).toBe('https://www.procyclingstats.com/rider/tadej-pogacar');
+    expect(entryPcsUrl(es.find((e) => e.bib === '2')!)).toContain('search.php?term=');
+    expect((await profileFromEntry(tp.id)).pcsSlug).toBe('tadej-pogacar');
+    // erneut ohne Links einfügen: Kennung bleibt
+    await applyStartlist(race.id, [{ bib: '1', name: 'POGAČAR Tadej', team: 'UAE' }]);
+    expect((await raceEntries(race.id)).find((e) => e.bib === '1')!.pcsSlug).toBe('tadej-pogacar');
+  });
+});

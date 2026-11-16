@@ -161,12 +161,13 @@ export interface StartlistResult { added: number; updated: number; unchanged: nu
  * Namen wiedergefunden; Notizen und Status bleiben erhalten. Profile werden über den Namen
  * verknüpft. Fahrer, die nicht mehr in der Liste stehen, werden nur mit `removeMissing` entfernt.
  */
-export async function applyStartlist(raceId: string, rows: { bib?: string; name: string; team?: string }[], opts: { removeMissing?: boolean } = {}): Promise<StartlistResult> {
+export async function applyStartlist(raceId: string, rows: { bib?: string; name: string; team?: string; pcsSlug?: string }[], opts: { removeMissing?: boolean } = {}): Promise<StartlistResult> {
   const riders = await allRiders();
   const existing = await raceEntries(raceId);
   const res: StartlistResult = { added: 0, updated: 0, unchanged: 0, linked: 0, removed: 0, withProfile: 0 };
   const seen = new Set<string>();
-  await mutate(['entries'], async (w) => {
+  const slugged = new Set<string>();
+  await mutate(['entries', 'riders'], async (w) => {
     for (const row of rows) {
       const name = displayName(row.name);
       const key = nameMatchKey(name);
@@ -174,17 +175,21 @@ export async function applyStartlist(raceId: string, rows: { bib?: string; name:
       const profile = findRiderByName(riders, name);
       if (cur) {
         seen.add(cur.id);
-        const next: Entry = { ...cur, bib: row.bib ?? cur.bib, team: row.team ?? cur.team, name: cur.name, riderId: cur.riderId ?? profile?.id };
+        const next: Entry = { ...cur, bib: row.bib ?? cur.bib, team: row.team ?? cur.team, name: cur.name, riderId: cur.riderId ?? profile?.id, pcsSlug: row.pcsSlug ?? cur.pcsSlug };
         if (!cur.riderId && profile) res.linked++;
-        if (next.bib !== cur.bib || next.team !== cur.team || next.riderId !== cur.riderId) { await w.put('entries', next); res.updated++; } else res.unchanged++;
+        if (next.bib !== cur.bib || next.team !== cur.team || next.riderId !== cur.riderId || next.pcsSlug !== cur.pcsSlug) { await w.put('entries', next); res.updated++; } else res.unchanged++;
         if (next.riderId) res.withProfile++;
       } else {
-        const e = newRecord<New<Entry>>({ raceId, bib: row.bib, name, team: row.team, riderId: profile?.id, status: 'aktiv' }) as Entry;
+        const e = newRecord<New<Entry>>({ raceId, bib: row.bib, name, team: row.team, riderId: profile?.id, pcsSlug: row.pcsSlug, status: 'aktiv' }) as Entry;
         await w.put('entries', e);
         res.added++;
         if (profile) { res.linked++; res.withProfile++; }
         seen.add(e.id);
       }
+      // Profil ohne PCS-Kennung: aus der Startliste ergänzen
+      const pid = cur?.riderId ?? profile?.id;
+      const p = pid ? riders.find((r) => r.id === pid) : undefined;
+      if (row.pcsSlug && p && !p.pcsSlug && !slugged.has(p.id)) { slugged.add(p.id); await w.put('riders', { ...p, pcsSlug: row.pcsSlug }); }
     }
     if (opts.removeMissing) for (const e of existing) if (!seen.has(e.id)) { await w.remove('entries', e.id); res.removed++; }
   });
@@ -236,7 +241,7 @@ export async function profileFromEntry(entryId: string): Promise<Rider> {
   const e = await db.entries.get(entryId);
   if (!e) throw new Error('Eintrag nicht gefunden');
   const n = splitName(e.name);
-  const r = await createRider({ ...n, name: e.name, team: e.team });
+  const r = await createRider({ ...n, name: e.name, team: e.team, pcsSlug: e.pcsSlug });
   await updateEntry(e.id, { riderId: r.id });
   return r;
 }
@@ -326,4 +331,8 @@ export const pcsRiderUrl = (r: Pick<Rider, 'pcsSlug' | 'name'>) =>
   r.pcsSlug ? `${PCS}/rider/${encodeURIComponent(r.pcsSlug)}` : `${PCS}/search.php?term=${encodeURIComponent(r.name)}`;
 export const pcsRaceUrl = (r: Pick<Race, 'pcsUrl' | 'name' | 'year'>) => r.pcsUrl || `${PCS}/search.php?term=${encodeURIComponent(r.name)}`;
 /** Aus einer eingefügten PCS-Adresse die Fahrerkennung lesen */
+/** PCS-Seite eines Startlisten-Eintrags: Kennung aus Profil oder Startliste, sonst Suche. */
+export const entryPcsUrl = (e: Pick<Entry, 'name' | 'pcsSlug'>, r?: Pick<Rider, 'pcsSlug' | 'name'>) =>
+  pcsRiderUrl({ name: r?.name ?? e.name, pcsSlug: r?.pcsSlug ?? e.pcsSlug });
+
 export const pcsSlugFrom = (v: string) => v.trim().match(/procyclingstats\.com\/rider\/([a-z0-9-]+)/i)?.[1]?.toLowerCase() ?? (/^[a-z0-9]+(-[a-z0-9]+)+$/i.test(v.trim()) ? v.trim().toLowerCase() : undefined);

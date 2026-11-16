@@ -3,10 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, alive } from '../db/db';
 import { RACE_SECTIONS, STATUS_LABEL, type Entry, type EntryStatus, type Race, type Stage } from '../domain/types';
 import {
-  addRidersToRace, addStage, applyStartlist, createRace, createTopic, deleteRace, pcsRaceUrl, profileFromEntry, profilesByLastRace,
+  addRidersToRace, addStage, applyStartlist, createRace, displayName, entryPcsUrl, nameMatchKey, createTopic, deleteRace, pcsRaceUrl, profileFromEntry, profilesByLastRace,
   raceEntries, raceStages, removeEntry, removeStage, saveRaceSection, setEntryStatus, updateEntry, updateRace, updateStage, type StartlistResult,
 } from '../domain/center';
-import { parsePcsStartlist } from '../import/pcsPaste';
+import { parsePcsStartlist, pcsRiderLinks } from '../import/pcsPaste';
 import { createRestorePoint } from '../backup/archive';
 import { normalize } from '../domain/text';
 import { RichField } from './rich';
@@ -203,7 +203,7 @@ function Startlist({ race }: { race: Race }) {
       {carry && <CarryRiders race={race} entries={entries} onDone={() => setCarry(false)} />}
       {entries.length ? (
         <table className="tbl" style={{ marginTop: 10 }}>
-          <thead><tr><th>Nr.</th><th>Name</th><th>Team</th><th>Profil</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>Nr.</th><th>Name</th><th>Team</th><th>PCS</th><th>Profil</th><th>Status</th><th /></tr></thead>
           <tbody>{shown.map((e) => <EntryRow key={e.id} e={e} race={race} />)}</tbody>
         </table>
       ) : <p className="muted" style={{ marginTop: 12 }}>Noch keine Startliste. Öffne die Startliste auf PCS, kopiere sie (Strg A, Strg C) und füge sie hier ein – oder übernimm deine Profil-Fahrer.</p>}
@@ -219,6 +219,7 @@ function EntryRow({ e, race }: { e: Entry; race: Race }) {
         <td style={{ width: 70 }}><CommitInput value={e.bib} style={{ width: 56 }} onCommit={(v) => updateEntry(e.id, { bib: v.trim() || undefined })} aria-label={`Startnummer ${e.name}`} /></td>
         <td>{e.riderId ? <a href={`#fahrer-${e.riderId}`}>{e.name}</a> : e.name}</td>
         <td className="small">{e.team}</td>
+        <td>{e.pcsSlug ? <PcsLink url={entryPcsUrl(e)} title={`PCS-Fahrerseite (${e.pcsSlug})`} /> : <span className="muted small" title="Kein Link zur PCS-Fahrerseite. Startliste direkt aus PCS kopieren und neu einfügen.">–</span>}</td>
         <td>{e.riderId ? <span className="chip flag">Profil</span> : <button className="btn small" onClick={async () => { const r = await profileFromEntry(e.id); go(`fahrer-${r.id}`); }}>+ Profil</button>}</td>
         <td>
           <select value={e.status} onChange={(ev) => setEntryStatus(e.id, ev.target.value as EntryStatus)} aria-label={`Status ${e.name}`}>
@@ -237,23 +238,28 @@ function EntryRow({ e, race }: { e: Entry; race: Race }) {
 
 function StartlistPaste({ race, onDone }: { race: Race; onDone: () => void }) {
   const [text, setText] = useState('');
+  const [html, setHtml] = useState('');
   const [removeMissing, setRemoveMissing] = useState(false);
   const [res, setRes] = useState<StartlistResult | null>(null);
   const parsed = useMemo(() => (text.trim() ? parsePcsStartlist(text) : null), [text]);
+  // PCS-Kennungen aus den mitkopierten Links (Name → Kennung)
+  const slugs = useMemo(() => new Map(pcsRiderLinks(html).map((l) => [nameMatchKey(displayName(l.name)), l.slug])), [html]);
+  const withSlug = parsed ? parsed.entries.filter((e) => slugs.has(nameMatchKey(displayName(e.name)))).length : 0;
   const apply = async () => {
     if (!parsed) return;
     await createRestorePoint(`Vor Startliste ${race.name}`);
-    setRes(await applyStartlist(race.id, parsed.entries.map((e) => ({ bib: e.bib, name: e.name, team: e.team })), { removeMissing }));
-    setText('');
+    setRes(await applyStartlist(race.id, parsed.entries.map((e) => ({ bib: e.bib, name: e.name, team: e.team, pcsSlug: slugs.get(nameMatchKey(displayName(e.name))) })), { removeMissing }));
+    setText(''); setHtml('');
   };
   return (
     <div className="banner">
       <p className="small" style={{ marginTop: 0 }}>Öffne die Startliste auf PCS (Knopf „PCS-Startliste“), drücke dort <b>Strg A</b> und <b>Strg C</b> und füge sie hier mit <b>Strg V</b> ein. Bestehende Einträge, Notizen und Status bleiben erhalten; Profile werden über den Namen verknüpft.</p>
-      <textarea rows={4} style={{ width: '100%' }} value={text} onChange={(e) => { setText(e.target.value); setRes(null); }} placeholder="Kopierte PCS-Startliste …" aria-label="PCS-Startliste einfügen" autoFocus />
+      <textarea rows={4} style={{ width: '100%' }} value={text} onChange={(e) => { setText(e.target.value); setRes(null); if (!e.target.value.trim()) setHtml(''); }} onPaste={(e) => { const h = e.clipboardData.getData('text/html'); if (h) setHtml(h); }} placeholder="Kopierte PCS-Startliste …" aria-label="PCS-Startliste einfügen" autoFocus />
       {text.trim() && !parsed && <p className="warn small">Keine PCS-Startliste erkannt. Bitte die ganze Startlisten-Seite mit Strg A kopieren.</p>}
       {parsed && (
         <p className="small">
           Erkannt: <b>{parsed.entries.length} Fahrer</b> in {parsed.teams.length} Teams{parsed.meta.raceName ? ` – ${parsed.meta.raceName} ${parsed.meta.year ?? ''}` : ''}.
+          {' '}{withSlug ? `${withSlug} mit Link zur PCS-Fahrerseite.` : <span className="warn">Ohne Links zu den PCS-Fahrerseiten – bitte direkt aus der PCS-Seite kopieren und mit Strg V einfügen (nicht als reiner Text).</span>}
           {parsed.warnings.map((w, i) => <span key={i} className="warn"> {w}</span>)}
         </p>
       )}

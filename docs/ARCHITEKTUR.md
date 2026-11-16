@@ -28,7 +28,7 @@ Vorbild für Gestaltung und Bedienung ist das MotoGP Command Center des Nutzers.
 - **Rennen:** Rundfahrt oder Eintagesrennen.
   - Abschnitte: Aktuell, Favoriten, Strecke, Geschichte, Statistik, Zitate.
   - Etappen mit Datum, Start, Ziel, km, Profil und Notizen.
-  - Startliste mit Startnummer, Team, Status und einer Notiz pro Fahrer für dieses Rennen.
+  - Startliste mit Startnummer, Team, PCS-Kennung, Status und einer Notiz pro Fahrer für dieses Rennen. Beim Einfügen liest das Center aus dem mitkopierten HTML die Links zu den PCS-Fahrerseiten (nur eingefügter Text, kein Abruf) und ergänzt damit auch Profile ohne Kennung.
 - **Fahrer von Rennen zu Rennen:** Beim Einfügen einer Startliste werden Profile über den Namen verknüpft (akzent- und reihenfolgeunabhängig). „Profil-Fahrer übernehmen“ fügt Profile hinzu, die zuletzt gefahrenen zuerst.
 - **Themen:** Statistik, Geschichte, Hintergrund, Notiz und Zitat, jeweils mit Titel, Text und Quelle. Ein Thema kann mit einem Rennen, einer Etappe und mehreren Fahrern verknüpft und mit ★ hervorgehoben werden.
 - **LIVE (nur Lesen):**
@@ -36,7 +36,7 @@ Vorbild für Gestaltung und Bedienung ist das MotoGP Command Center des Nutzers.
   - Mitte die Fahrerkarte (★-Zeilen zuoberst, danach Aktuell, Themen, Erfolge …),
   - rechts Etappe, Rennabschnitte und Themen.
   - Tastatur: Eine Ziffer sucht die Startnummer, ein Buchstabe oder `/` sucht den Namen, `+` / `−` verstellen km to go.
-  - Suche nach Startnummer öffnet zusätzlich die PCS-Fahrerseite im Fenster „pcs“ (mit PCS-Adresse im Profil direkt die Fahrerseite, sonst die PCS-Suche nach dem Namen). Schalter „PCS“ links, pro Gerät gemerkt. Nur ein Link, kein Abruf.
+  - Suche nach Startnummer öffnet zusätzlich die PCS-Fahrerseite im Fenster „pcs“ (direkt die Fahrerseite, wenn die PCS-Kennung bekannt ist – aus dem Profil oder aus den Links der eingefügten Startliste; sonst die PCS-Suche nach dem Namen). Schalter „PCS“ links, pro Gerät gemerkt. Nur ein Link, kein Abruf.
   - Rennsituation über der Fahrerkarte: Gruppen (Spitze, Verfolger, Feld …) mit Abstand und Startnummern; Klick auf einen Fahrer öffnet die Karte, „+ Nr.“ verschiebt den gewählten Fahrer in eine Gruppe.
   - Fahrerkarte zeigt die Gruppe des Fahrers.
   - „Stichworte“ (Standard): nur ★-Zeilen, „Aktuell“ und „Bei diesem Rennen“ offen, der Rest eingeklappt; Themen ohne ★ eingeklappt.
